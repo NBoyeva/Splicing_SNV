@@ -158,6 +158,119 @@ plot_density(full_info_table, 'QD', labels, descriptions)
 plot_density(full_info_table, 'SOR', labels, descriptions)
 ```
 
+# Analysis of intersections
+
+```{r message=FALSE, warning=FALSE}
+library(VennDiagram)
+flog.threshold(ERROR)
+source('venn_plot_functions.R')
+
+hardfilter_vcf <- function(unfiltered_vcf, stats=FALSE) {
+  
+  # This function applies VCF filtration and returns filtration statistics 
+  # (optionally). Prior to this, VCF should be processed with FilterVariants
+  # from GATK.
+  
+  if (stats) {
+    print(paste0("Filtered by FS:  ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "FS"]))))
+    print(paste0("Filtered by SOR: ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "SOR"]))))
+    print(paste0("Filtered by QUAL:  ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "QUAL"]))))
+    print(paste0("Filtered by MQ:  ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "MQ"]))))
+    print(paste0("Filtered by ReadPosRankSum:  ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "ReadPosRankSum"]))))
+    print(paste0("Filtered by MQRankSum: ", 
+                 as.character(length(
+                   unfiltered_vcf[unfiltered_vcf$FILTER == "MQRankSum"]))))
+  }
+  return(unfiltered_vcf[unfiltered_vcf$FILTER == "PASS"])
+}
+
+load_vcf <- function(path, hardfilter=TRUE, stats=FALSE) {
+  vcf_file <- readVcf(path, "hg38")
+  gr_vcf <- granges(vcf_file)
+  if (hardfilter) {
+    gr_vcf <- hardfilter_vcf(gr_vcf, stats=stats)
+  }
+  return(gr_vcf)
+}
+```
+
+```{r message=FALSE, warning=FALSE}
+gen1_uf <- load_vcf(gen_vcf1_path, hardfilter=FALSE)
+gen2_uf <- load_vcf(gen_vcf2_path, hardfilter=FALSE)
+gen_merged_uf <- load_vcf(gen_merged_vcf_path, hardfilter=FALSE)
+nas1_uf <- load_vcf(nas_vcf1_path, hardfilter=FALSE)
+nas2_uf <- load_vcf(nas_vcf2_path, hardfilter=FALSE)
+nas3_uf <- load_vcf(nas_vcf3_path, hardfilter=FALSE)
+nas_merged_uf <- load_vcf(nas_merged_vcf_path, hardfilter=FALSE)
+
+gen1 <- load_vcf(gen_vcf1_path)
+gen2 <- load_vcf(gen_vcf2_path)
+gen_merged <- load_vcf(gen_merged_vcf_path)
+nas1 <- load_vcf(nas_vcf1_path)
+nas2 <- load_vcf(nas_vcf2_path)
+nas3 <- load_vcf(nas_vcf3_path)
+nas_merged <- load_vcf(nas_merged_vcf_path)
+```
+
+## Genomic SNVs
+
+```{r}
+plot_venn_4sets(data_list=list(gen1_uf, 
+                          gen1,
+                          gen2_uf,
+                          gen2),
+            param='All SNPs', 
+            labels=c("Sample 1, unfiltered",
+                     "Sample 1, filtered",
+                     "Sample 2, unfiltered",
+                     "Sample 2, filtered"), 
+            title="Genomic SNV intersections")
+```
+
+```{r}
+plot_venn_3sets(data_list=list(gen1,
+                               gen2,
+                               gen_merged),
+          param='All SNPs', 
+          labels=c("Sample 1",
+                   "Sample 2",
+                   "Merged samples"), 
+          title="Genomic SNVs intersections")
+```
+
+## Nascent SNVs
+
+```{r}
+plot_venn_4sets(data_list=list(nas1, 
+                               nas2, 
+                               nas3, 
+                               nas_merged),
+          param='All SNPs', 
+          labels=c("Sample 1",
+                   "Sample 2",
+                   "Sample 3",
+                   "Merged samples"), 
+          title="Nascent RNA SNVs")
+```
+
+## Genomic and nascent SNVs
+
+```{r}
+length(gen_merged@ranges@NAMES)
+length(nas_merged@ranges@NAMES)
+length(intersect(gen_merged@ranges@NAMES, nas_merged@ranges@NAMES))
+```
+
 # Comparison of unique and intersecting SNVs
 
 ```{r}
@@ -396,115 +509,4 @@ plot_sor <- plot_snv_density(snv_set_with_metric, param_name, descriptions_df, x
 print(plot_sor)
 ```
 
-# Analysis of intersections
-
-```{r message=FALSE, warning=FALSE}
-library(VennDiagram)
-flog.threshold(ERROR)
-source('venn_plot_functions.R')
-
-hardfilter_vcf <- function(unfiltered_vcf, stats=FALSE) {
-  
-  # This function applies VCF filtration and returns filtration statistics 
-  # (optionally). Prior to this, VCF should be processed with FilterVariants
-  # from GATK.
-  
-  if (stats) {
-    print(paste0("Filtered by FS:  ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "FS"]))))
-    print(paste0("Filtered by SOR: ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "SOR"]))))
-    print(paste0("Filtered by QUAL:  ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "QUAL"]))))
-    print(paste0("Filtered by MQ:  ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "MQ"]))))
-    print(paste0("Filtered by ReadPosRankSum:  ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "ReadPosRankSum"]))))
-    print(paste0("Filtered by MQRankSum: ", 
-                 as.character(length(
-                   unfiltered_vcf[unfiltered_vcf$FILTER == "MQRankSum"]))))
-  }
-  return(unfiltered_vcf[unfiltered_vcf$FILTER == "PASS"])
-}
-
-load_vcf <- function(path, hardfilter=TRUE, stats=FALSE) {
-  vcf_file <- readVcf(path, "hg38")
-  gr_vcf <- granges(vcf_file)
-  if (hardfilter) {
-    gr_vcf <- hardfilter_vcf(gr_vcf, stats=stats)
-  }
-  return(gr_vcf)
-}
-```
-
-```{r message=FALSE, warning=FALSE}
-gen1_uf <- load_vcf(gen_vcf1_path, hardfilter=FALSE)
-gen2_uf <- load_vcf(gen_vcf2_path, hardfilter=FALSE)
-gen_merged_uf <- load_vcf(gen_merged_vcf_path, hardfilter=FALSE)
-nas1_uf <- load_vcf(nas_vcf1_path, hardfilter=FALSE)
-nas2_uf <- load_vcf(nas_vcf2_path, hardfilter=FALSE)
-nas3_uf <- load_vcf(nas_vcf3_path, hardfilter=FALSE)
-nas_merged_uf <- load_vcf(nas_merged_vcf_path, hardfilter=FALSE)
-
-gen1 <- load_vcf(gen_vcf1_path)
-gen2 <- load_vcf(gen_vcf2_path)
-gen_merged <- load_vcf(gen_merged_vcf_path)
-nas1 <- load_vcf(nas_vcf1_path)
-nas2 <- load_vcf(nas_vcf2_path)
-nas3 <- load_vcf(nas_vcf3_path)
-nas_merged <- load_vcf(nas_merged_vcf_path)
-```
-
-## Genomic SNVs
-
-```{r}
-plot_venn_4sets(data_list=list(gen1_uf, 
-                          gen1,
-                          gen2_uf,
-                          gen2),
-            param='All SNPs', 
-            labels=c("Sample 1, unfiltered",
-                     "Sample 1, filtered",
-                     "Sample 2, unfiltered",
-                     "Sample 2, filtered"), 
-            title="Genomic SNV intersections")
-```
-
-```{r}
-plot_venn_3sets(data_list=list(gen1,
-                               gen2,
-                               gen_merged),
-          param='All SNPs', 
-          labels=c("Sample 1",
-                   "Sample 2",
-                   "Merged samples"), 
-          title="Genomic SNVs intersections")
-```
-
-## Nascent SNVs
-
-```{r}
-plot_venn_4sets(data_list=list(nas1, 
-                               nas2, 
-                               nas3, 
-                               nas_merged),
-          param='All SNPs', 
-          labels=c("Sample 1",
-                   "Sample 2",
-                   "Sample 3",
-                   "Merged samples"), 
-          title="Nascent RNA SNVs")
-```
-
-## Genomic and nascent SNVs
-
-```{r}
-length(gen_merged@ranges@NAMES)
-length(nas_merged@ranges@NAMES)
-length(intersect(gen_merged@ranges@NAMES, nas_merged@ranges@NAMES))
-```
+# 
