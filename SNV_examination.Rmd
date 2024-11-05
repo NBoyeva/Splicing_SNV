@@ -1,0 +1,525 @@
+---
+title: "SNV examination"
+author: "Nadzeya Boyeva"
+date: "2024-11-01"
+output: html_document
+---
+
+```{r message=FALSE, include=FALSE}
+library(ggplot2)
+library(VariantAnnotation)
+library(dplyr)
+```
+
+```{r}
+fd <- '/home/nadzeya/praktika/'
+gen_vcf1_path = file.path(fd, "gen1_snps_f.vcf.gz")
+gen_vcf2_path = file.path(fd, "gen2_snps_f.vcf.gz")
+gen_merged_vcf_path <- file.path(fd, "gen_merged_snps_f.vcf.gz")
+nas_vcf1_path <- file.path(fd, "nas1_snps_f.vcf.gz")
+nas_vcf2_path <- file.path(fd, "nas2_snps_f.vcf.gz")
+nas_vcf3_path <- file.path(fd, "nas3_2_snps_f.vcf.gz")
+nas_merged_vcf_path <- file.path(fd, "nas_merged_snps_f.vcf.gz")
+
+filepaths <- c(gen_vcf1_path,
+               gen_vcf2_path,
+               gen_merged_vcf_path,
+               nas_vcf1_path,
+               nas_vcf2_path,
+               nas_vcf3_path,
+               nas_merged_vcf_path)
+
+labels <- c('Gen 1', 
+            'Gen 2',
+            'Gen Merged',
+            'Nas 1',
+            'Nas 2',
+            'Nas 3',
+            'Nas Merged')
+```
+
+```{r}
+load_vcf <- function(path) {
+  vcf_file <- readVcf(path, "hg38")
+  gr_vcf <- granges(vcf_file)
+  return(gr_vcf)
+}
+```
+
+```{r}
+gen1 <- load_vcf(gen_vcf1_path)
+gen1_info <- info(readVcf(gen_vcf1_path, "hg38"))
+gen1_info$AC
+gen1_info$AF
+gen1_info$AN
+gen1_info$DP
+gen1_info$MLEAC
+gen1_info$MLEAF
+gen1_info$MQ
+gen1_info$QD
+gen1_info$SOR
+params <- c('AC', 'AF', 'AN', 'DP', 'MLEAC', 'MLEAF', 'MQ', 'QD', 'SOR')
+```
+
+# Comparison of SNV quality metrics across files
+
+```{r}
+descriptions <- info(header(gen1))
+descriptions
+```
+
+```{r}
+plot_density <- function(info_tables, 
+                         param_name, 
+                         labels, 
+                         descriptions, 
+                         x_log10 = FALSE, 
+                         y_log10 = FALSE) {
+
+  data_list <- list()
+  
+  for (i in seq_along(info_tables)) {
+
+    if (param_name %in% names(info_tables[[i]])) {
+      parameter_data <- unlist(info_tables[[i]][[param_name]])  
+      
+      if (length(parameter_data) > 0) {
+        data_list[[i]] <- data.frame(
+          Value = parameter_data,
+          File = labels[i]
+        )
+      }
+    } else {
+      warning(paste("Error: parameter", param_name, "not found in", labels[i]))
+    }
+  }
+  
+  if (length(data_list) == 0) {
+    stop("Error: no valid data found for the specified parameter")
+  }
+  
+  combined_data <- do.call(rbind, data_list)
+  
+  x_label <- if (x_log10) paste(param_name, "(log10 scale)") else param_name
+  y_label <- if (y_log10) "Density (log10 scale)" else "Density"
+  
+  p <- ggplot(combined_data, aes(x = Value, color = File)) +
+    geom_density() +
+    labs(title = descriptions[param_name, ]$Description,
+         x = x_label,
+         y = y_label) +
+    theme_minimal() +
+    theme(legend.title = element_blank())
+  
+  if (x_log10) {
+    p <- p + scale_x_log10()
+  }
+  if (y_log10) {
+    p <- p + scale_y_log10()
+  }
+  
+  return(p)
+}
+
+plot_density(info_tables, "AC", labels, descriptions)
+```
+
+```{r}
+plot_density(info_tables, 'DP', labels, descriptions, use_log10=TRUE)
+```
+
+```{r}
+plot_density(info_tables, 'MQ', labels, descriptions, y_log10=TRUE)
+```
+
+```{r}
+plot_density(info_tables, 'QD', labels, descriptions)
+```
+
+```{r}
+plot_density(info_tables, 'SOR', labels, descriptions)
+```
+
+# Comparison of unique and intersecting SNVs
+
+Function to read VCF files and extract SNVs and a chosen parameter
+
+```{r}
+extract_snvs_and_param <- function(filepath, param_name) {
+  # Read VCF file and extract metadata (assuming hg38 as the reference genome)
+  vcf <- readVcf(filepath, "hg38")
+  gen_info <- info(vcf)  # Extract the INFO field containing metadata
+  
+  # Extract the SNV positions (row names of the VCF) and the corresponding parameter
+  snv_positions <- rownames(vcf)
+  
+  # Check if the requested parameter exists in the INFO field
+  if (param_name %in% names(gen_info)) {
+    # If the parameter exists, extract it as a flattened vector
+    parameter_data <- unlist(gen_info[[param_name]])
+  } else {
+    # If the parameter does not exist, fill the corresponding rows with NAs
+    parameter_data <- rep(NA, length(snv_positions))  # Return NA for missing values
+    print("Warning: missing data; NA added")  # Log a warning for missing data
+  }
+  
+  # Filter out SNVs where the parameter is NA (i.e., incomplete cases)
+  complete_cases <- !is.na(parameter_data)
+  snv_positions <- snv_positions[complete_cases]  # Filter positions
+  parameter_data <- parameter_data[complete_cases]  # Filter parameter values
+  
+  # Return a data frame containing SNV positions and the corresponding parameter values
+  return(data.frame(Position = snv_positions, Value = parameter_data))
+}
+```
+
+```{r}
+extract_snvs <- function(filepath) {
+  # Read VCF file and extract metadata (assuming hg38 as the reference genome)
+  vcf <- readVcf(filepath, "hg38")
+  gen_info <- info(vcf)  # Extract the INFO field containing metadata
+  
+  # Extract the SNV positions (row names of the VCF) and the corresponding parameter
+  snv_positions <- rownames(vcf)
+  
+  # Check if the requested parameter exists in the INFO field
+  if (param_name %in% names(gen_info)) {
+    # If the parameter exists, extract it as a flattened vector
+    parameter_data <- unlist(gen_info[[param_name]])
+  } else {
+    # If the parameter does not exist, fill the corresponding rows with NAs
+    parameter_data <- rep(NA, length(snv_positions))  # Return NA for missing values
+    print("Warning: missing data; NA added")  # Log a warning for missing data
+  }
+  
+  # Filter out SNVs where the parameter is NA (i.e., incomplete cases)
+  complete_cases <- !is.na(parameter_data)
+  snv_positions <- snv_positions[complete_cases]  # Filter positions
+  parameter_data <- parameter_data[complete_cases]  # Filter parameter values
+  
+  # Return a data frame containing SNV positions and the corresponding parameter values
+  return(data.frame(Position = snv_positions, Value = parameter_data))
+}
+```
+
+```{r}
+
+# Function to identify unique and common SNVs
+identify_snv_sets <- function(snv_data, file_labels) {
+  # Identify unique SNVs for each file by excluding SNVs present in other files
+  unique_snvs <- lapply(seq_along(snv_data), function(i) {
+    all_other_snvs <- unlist(lapply(snv_data[-i], function(d) d$Position))  # Combine SNVs from other files
+    unique_snv_df <- snv_data[[i]][!(snv_data[[i]]$Position %in% all_other_snvs), ]  # Filter unique SNVs
+    unique_snv_df$File <- paste(file_labels[i], "unique")  # Label as "file unique"
+    return(unique_snv_df)  # Return data frame with unique SNVs
+  })
+  
+  # Identify SNVs common in "gen" files (e.g., gen1, gen2, gen_merged)
+  gen_files <- c("gen1", "gen2", "gen_merged")  # Define "gen" files
+  gen_indices <- which(file_labels %in% gen_files)  # Find indices of "gen" files
+  gen_common_positions <- Reduce(intersect, lapply(gen_indices, function(i) snv_data[[i]]$Position))  # Find common positions
+  gen_common_snvs <- snv_data[[gen_indices[1]]][snv_data[[gen_indices[1]]]$Position %in% gen_common_positions, ]  # Extract common SNVs
+  gen_common_snvs$File <- "gen common"  # Label as "gen common"
+  
+  # Identify SNVs common in "nas" files (e.g., nas1, nas2, nas3, nas_merged)
+  nas_files <- c("nas1", "nas2", "nas3", "nas_merged")  # Define "nas" files
+  nas_indices <- which(file_labels %in% nas_files)  # Find indices of "nas" files
+  nas_common_positions <- Reduce(intersect, lapply(nas_indices, function(i) snv_data[[i]]$Position))  # Find common positions
+  nas_common_snvs <- snv_data[[nas_indices[1]]][snv_data[[nas_indices[1]]]$Position %in% nas_common_positions, ]  # Extract common SNVs
+  nas_common_snvs$File <- "nas common"  # Label as "nas common"
+  
+  # Identify SNVs common across all files
+  all_common_positions <- Reduce(intersect, lapply(snv_data, function(df) df$Position))  # Find common SNVs across all files
+  all_common_snvs <- snv_data[[1]][snv_data[[1]]$Position %in% all_common_positions, ]  # Extract common SNVs
+  all_common_snvs$File <- "all common"  # Label as "all common"
+  
+  # Combine all sets (unique and common SNVs) into a single data frame
+  combined_snvs <- bind_rows(unique_snvs, gen_common_snvs, nas_common_snvs, all_common_snvs)
+  return(combined_snvs)
+}
+```
+
+```{r}
+# Function to plot the combined SNV data
+plot_snv_density <- function(combined_snvs, param_name, descriptions, x_log10 = FALSE, y_log10 = FALSE) {
+  # Adjust axis labels based on log10 options
+  x_label <- if (x_log10) paste(param_name, "(log10 scale)") else param_name
+  y_label <- if (y_log10) "Density (log10 scale)" else "Density"
+  
+  # Create a column in combined_snvs to indicate the thickness of the lines
+  combined_snvs$LineThickness <- ifelse(combined_snvs$File %in% c("gen common", "nas common", "all common"), 1.5, 0.5)
+  
+  # Create the density plot
+  p <- ggplot(combined_snvs, aes(x = Value, color = File, size = LineThickness)) +
+    geom_density() +  # Adjust line size using aes(size)
+    labs(title = paste(descriptions[[param_name, "Description"]], "- Combined Plot"),
+         x = x_label,
+         y = y_label) +
+    theme_minimal() +
+    theme(legend.title = element_blank()) +
+    scale_size_identity()  # Ensure the size aesthetic is taken directly from data
+  
+  # Apply log10 scale to x or y axis if specified
+  if (x_log10) {
+    p <- p + scale_x_log10()
+  }
+  if (y_log10) {
+    p <- p + scale_y_log10()
+  }
+  
+  return(p)
+}
+```
+
+```{r}
+descriptions_df <- data.frame(
+  Description = c("Description for AC", "Description for AF", "Description for AN", "Description for DP", "Description for MQ", "Description for QD"),
+  row.names = c("AC", "AF", "AN", "DP", "MQ", "QD")
+)
+
+# Step 1: Extract SNVs from each VCF file for a chosen parameter (e.g., QD)
+param_name <- "QD"  # Example parameter
+snv_data <- lapply(filepaths, function(filepath) extract_snvs_and_param(filepath, param_name))
+
+# Step 2: Identify unique and common SNVs from the SNV data
+combined_snvs <- identify_snv_sets(snv_data, labels)
+
+# Step 3: Plot SNV densities for all sets, with thicker lines for common SNVs
+plot <- plot_snv_density(combined_snvs, param_name, descriptions_df, x_log10 = FALSE, y_log10 = FALSE)
+print(plot)
+
+```
+
+```{r}
+library(ggplot2)
+library(VariantAnnotation)
+library(dplyr)
+
+# Step 1: Extract the INFO tables and SNV positions from VCF files
+extract_info_and_positions <- function(filepath) {
+  vcf <- readVcf(filepath, "hg38")
+  info_table <- info(vcf)  # Extract the INFO field for quality metrics
+  snv_positions <- rownames(vcf)  # Extract the SNV positions
+  return(list(info_table = info_table, positions = snv_positions))
+}
+
+# Step 2: Identify unique and common SNVs based on positions
+identify_snv_sets_positions <- function(snv_positions, file_labels) {
+  # Identify unique SNVs for each file based on positions
+  unique_snvs <- lapply(seq_along(snv_positions), function(i) {
+    all_other_snvs <- unlist(snv_positions[-i])
+    unique_positions <- snv_positions[[i]][!(snv_positions[[i]] %in% all_other_snvs)]
+    return(data.frame(Position = unique_positions, File = paste(file_labels[i], "unique")))
+  })
+  
+  # Identify common SNVs in gen files (gen1, gen2, gen_merged)
+  gen_files <- c("gen1", "gen2", "gen_merged")
+  gen_indices <- which(file_labels %in% gen_files)
+  gen_common_positions <- Reduce(intersect, lapply(gen_indices, function(i) snv_positions[[i]]))
+  gen_common_snvs <- data.frame(Position = gen_common_positions, File = "gen common")
+  
+  # Identify common SNVs in nas files (nas1, nas2, nas3, nas_merged)
+  nas_files <- c("nas1", "nas2", "nas3", "nas_merged")
+  nas_indices <- which(file_labels %in% nas_files)
+  nas_common_positions <- Reduce(intersect, lapply(nas_indices, function(i) snv_positions[[i]]))
+  nas_common_snvs <- data.frame(Position = nas_common_positions, File = "nas common")
+  
+  # Identify common SNVs across all files
+  all_common_positions <- Reduce(intersect, snv_positions)
+  all_common_snvs <- data.frame(Position = all_common_positions, File = "all common")
+  
+  # Combine all sets
+  combined_positions <- bind_rows(unique_snvs, gen_common_snvs, nas_common_snvs, all_common_snvs)
+  return(combined_positions)
+}
+
+# Helper function to extract common metrics for "gen common", "nas common", and "all common"
+extract_common_metric <- function(info_tables, param_name, snv_set) {
+  positions <- snv_set$Position  # SNV positions from the common SNV set
+
+  # Initialize an empty list to hold parameter values for each file
+  param_values_list <- list()
+  
+  # Iterate over each INFO table in the group (e.g., gen1, gen2, gen_merged for gen common)
+  for (i in seq_along(info_tables)) {
+    if (param_name %in% names(info_tables[[i]]$info_table)) {
+      # Extract all parameter values for this file
+      param_values <- unlist(info_tables[[i]]$info_table[[param_name]])
+      
+      # Filter parameter values to include only those matching the common SNV positions
+      matched_values <- param_values[info_tables[[i]]$positions %in% positions]
+      
+      # Ensure the matched values are correctly aligned with the positions
+      if (length(matched_values) != length(positions)) {
+        stop("Mismatch between common parameter values and positions in the common SNV set.")
+      }
+      
+      # Add the matched values to the list
+      param_values_list[[i]] <- matched_values
+    } else {
+      # If the parameter doesn't exist, return NA values
+      param_values_list[[i]] <- rep(NA, length(positions))
+    }
+  }
+
+  # For common SNVs, we assume the values are consistent across files (take the first set)
+  return(param_values_list[[1]])  # Return the values from the first file in the group
+}
+
+# Helper function to extract common metrics for "gen common", "nas common", and "all common"
+extract_common_metric <- function(info_tables, param_name, snv_set) {
+  positions <- snv_set$Position  # SNV positions from the common SNV set
+  
+  # Initialize an empty vector to store the parameter values for the common SNVs
+  common_values <- rep(NA, length(positions))
+  
+  # Iterate over each INFO table in the group (e.g., gen1, gen2, gen_merged for gen common)
+  for (i in seq_along(info_tables)) {
+    if (param_name %in% names(info_tables[[i]]$info_table)) {
+      # Extract all parameter values for this file
+      param_values <- unlist(info_tables[[i]]$info_table[[param_name]])
+      
+      # Get the positions that match the common SNV positions
+      matched_indices <- match(positions, info_tables[[i]]$positions)
+      
+      # Extract the parameter values corresponding to the matched positions
+      common_values <- ifelse(!is.na(matched_indices), param_values[matched_indices], common_values)
+    } else {
+      # If the parameter doesn't exist, return NA values (this might not happen if param is consistent)
+      next
+    }
+  }
+  
+  # Ensure the number of common values matches the number of positions in snv_set
+  if (length(common_values) != length(positions)) {
+    stop("Mismatch between common parameter values and positions in the common SNV set.")
+  }
+
+  return(common_values)
+}
+
+# Step 3: Function to extract parameter values for SNV sets using stored INFO tables
+extract_metric_from_info_tables <- function(info_tables, param_name, snv_set) {
+  # Initialize an empty list to store the parameter values for unique SNVs
+  param_values_list <- list()
+
+  # Iterate over each file's INFO table to extract the relevant parameter for unique SNVs
+  for (i in seq_along(info_tables)) {
+    # Get the SNV positions for this file in the SNV set
+    positions_in_file <- snv_set$Position[snv_set$File == paste0(labels[i], " unique")]
+    
+    # Check if the parameter exists in the INFO table
+    if (param_name %in% names(info_tables[[i]]$info_table)) {
+      # Extract all the parameter values from the INFO table
+      param_values <- unlist(info_tables[[i]]$info_table[[param_name]])
+      
+      # Filter the parameter values based on the SNV positions
+      matched_indices <- match(positions_in_file, info_tables[[i]]$positions)
+      matched_values <- param_values[matched_indices]
+      
+      # Ensure that the number of values matches the number of positions in the SNV set
+      if (length(matched_values) != length(positions_in_file)) {
+        stop("Mismatch between the number of matched parameter values and positions in the SNV set.")
+      }
+      
+      # Add the matched values to the list
+      param_values_list[[i]] <- matched_values
+    } else {
+      # If the parameter doesn't exist, return NA values for the positions
+      param_values_list[[i]] <- rep(NA, length(positions_in_file))
+    }
+  }
+  
+  # Combine the list of parameter values into a single vector
+  unique_values <- unlist(param_values_list)
+  
+  # Update the SNV set with the extracted metric values for unique SNVs
+  snv_set$Value[snv_set$File %in% paste0(labels, " unique")] <- unique_values
+  
+  # Extract and update metrics for the common SNV sets (e.g., "gen common", "nas common", "all common")
+  common_files <- c("gen common", "nas common", "all common")
+  for (common_file in common_files) {
+    common_indices <- which(snv_set$File == common_file)
+    
+    # For common SNVs, use the first file in the group to extract values
+    if (common_file == "gen common") {
+      snv_set$Value[common_indices] <- extract_common_metric(info_tables[1:3], param_name, snv_set[common_indices, ])
+    } else if (common_file == "nas common") {
+      snv_set$Value[common_indices] <- extract_common_metric(info_tables[4:7], param_name, snv_set[common_indices, ])
+    } else if (common_file == "all common") {
+      snv_set$Value[common_indices] <- extract_common_metric(info_tables, param_name, snv_set[common_indices, ])
+    }
+  }
+  
+  return(snv_set)
+}
+
+
+# Step 4: Function to plot the SNV data with different parameter metrics
+plot_snv_density <- function(snv_set_with_metric, param_name, descriptions, x_log10 = FALSE, y_log10 = FALSE) {
+  # Adjust axis labels based on log10 options
+  x_label <- if (x_log10) paste(param_name, "(log10 scale)") else param_name
+  y_label <- if (y_log10) "Density (log10 scale)" else "Density"
+  
+  # Create a column to adjust line thickness for common SNVs
+  snv_set_with_metric$LineThickness <- ifelse(snv_set_with_metric$File %in% c("gen common", "nas common", "all common"), 1.5, 0.5)
+  
+  # Create the density plot
+  p <- ggplot(snv_set_with_metric, aes(x = Value, color = File, size = LineThickness)) +
+    geom_density() +
+    labs(title = paste(descriptions[[param_name, "Description"]], "- Combined Plot"),
+         x = x_label,
+         y = y_label) +
+    theme_minimal() +
+    scale_size_identity() +  # Use size directly from the LineThickness column
+    theme(legend.title = element_blank())
+  
+  # Apply log10 scale to x or y axis if requested
+  if (x_log10) {
+    p <- p + scale_x_log10()
+  }
+  if (y_log10) {
+    p <- p + scale_y_log10()
+  }
+  
+  return(p)
+}
+
+# Example usage:
+
+# Step 1: Define file paths and labels
+
+# Step 2: Extract INFO tables and SNV positions (once)
+info_tables <- lapply(filepaths, extract_info_and_positions)
+
+# Step 3: Identify unique and common SNV sets based on positions (constant)
+snv_set_positions <- identify_snv_sets_positions(lapply(info_tables, function(x) x$positions), labels)
+
+# Step 4: Define parameter descriptions
+descriptions <- data.frame(
+  Description = c("Description for AC", "Description for AF", "Description for AN", "Description for DP", "Description for MQ", "Description for QD"),
+  row.names = c("AC", "AF", "AN", "DP", "MQ", "QD")
+)
+
+# Step 5: Plot different parameters (without re-extracting SNVs or INFO tables)
+param_name <- "QD"  # Example parameter
+snv_set_with_metric <- extract_metric_from_info_tables(info_tables, param_name, snv_set_positions)
+plot_qd <- plot_snv_density(snv_set_with_metric, param_name, descriptions)
+
+# To plot a different parameter:
+param_name <- "AC"  # Example parameter
+snv_set_with_metric <- extract_metric_from_info_tables(info_tables, param_name, snv_set_positions)
+plot_ac <- plot_snv_density(snv_set_with_metric, param_name, descriptions)
+
+# Display the plot
+print(plot_qd)
+print(plot_ac)
+
+```
+
+```{r}
+param_name <- "MQ"  # Example parameter
+snv_set_with_metric <- extract_metric_from_info_tables(info_tables, param_name, snv_set_positions)
+plot_mq <- plot_snv_density(snv_set_with_metric, param_name, descriptions, x_log10 = FALSE, y_log10 = TRUE)
+print(plot_mq)
+```
