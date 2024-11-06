@@ -1,0 +1,115 @@
+---
+title: "Splising Sites Selection"
+author: "Nadzeya Boyeva"
+date: "2024-11-05"
+output: pdf_document
+---
+
+# Sites from EEJ gene related matrices
+
+## Kasumi cell line matrices
+
+```{r}
+fd <- '/home/nadzeya/praktika/'
+path1_kasumi <- file.path(fd, 
+                          "Kasumi-1 cells",
+                          "RUNX1-RUNX1T1 project, EEJs from Kasumi-1 cells, genes-related matrix.txt")
+path2_kasumi <-file.path(fd, 
+                         "Kasumi-1 cells",
+                         "RUNX1-RUNX1T1 project, EEJs, genes-related matrix.txt")
+path3_kasumi <- file.path(fd, 
+                          "Kasumi-1 cells", 
+                          "WT1 project, EEJs, genes-related matrix.txt")
+```
+
+```{r}
+readTxt <- function(path) {
+  read.table(file=path, 
+             sep="\t",
+             header=TRUE,
+             quote="\"",
+             as.is=TRUE)
+}
+
+kasumi1 <- readTxt(path1_kasumi)
+kasumi2 <- readTxt(path2_kasumi)
+kasumi3 <- readTxt(path3_kasumi)
+```
+
+```{r}
+kasumi1 <- kasumi1[1:14]
+kasumi2 <- kasumi2[, !names(kasumi2) %in% "intron_length"]
+kasumi3 <- kasumi3[1:17]
+
+kasumi_colnames <- c(colnames(kasumi1)[8:ncol(kasumi1)],
+                    colnames(kasumi2)[8:ncol(kasumi2)],
+                    colnames(kasumi3)[8:ncol(kasumi3)])
+kasumi_colnames
+```
+
+```{r}
+colnames(kasumi1)[8:ncol(kasumi1)]
+colnames(kasumi2)[8:ncol(kasumi2)]
+colnames(kasumi3)[8:ncol(kasumi3)]
+```
+
+## OML primary cells
+
+```{r}
+pc_files_path <- file.path(fd, "Primary cells")
+pc_files <- list()
+pc_colnames <- c()
+i <- 1
+for (path in list.files(pc_files_path)) {
+  pc_files[[i]] <- readTxt(file.path(pc_files_path, path))
+  pc_colnames <- c(pc_colnames, colnames(pc_files[[i]]))
+  i <- i + 1
+}
+```
+
+```{r}
+common_colnames <- c("eej_id", "gene_id", "seqnames", 
+                     "start", "end", "width", "strand", "intron_length")
+
+pc_colnames <- pc_colnames[!(pc_colnames %in% common_colnames)]
+length(pc_colnames)
+length(unique(pc_colnames))
+pc_colnames[duplicated(pc_colnames)]
+```
+
+## General dataset of EEJs
+
+```{r}
+eej_dataset <- file.path(fd, "Dataset of EEJs")
+eej_dataset_colnames <- c()
+for (path in list.files(eej_dataset)) {
+  file <- readTxt(file.path(eej_dataset, path))
+  eej_dataset_colnames <- c(eej_dataset_colnames, colnames(file))
+}
+```
+
+```{r}
+eej_dataset_colnames <- eej_dataset_colnames[!(eej_dataset_colnames %in% common_colnames)]
+length(eej_dataset_colnames)
+length(unique(eej_dataset_colnames))
+eej_dataset_colnames[(duplicated(eej_dataset_colnames))]
+```
+
+Six samples are present in Kasumi matrices, but not EEJ dataset:
+
+```{r}
+print(paste("Number of samples in Kasumi matrices:", 
+            length(kasumi_colnames)))
+print(paste("Number of samples in Kasumi matrices nor present in EEJ dataset:", 
+            length(kasumi_colnames[!(kasumi_colnames %in% eej_dataset_colnames)])))
+```
+
+```{r}
+kasumi_colnames[!(kasumi_colnames %in% eej_dataset_colnames)]
+```
+
+All samples from PC matrices which are not in EEJ dataset are present in Kasumi matrices. Therefore, PC matrices will not be used in following analysis.
+
+```{r}
+pc_colnames[!(pc_colnames %in% eej_dataset_colnames)]
+```
