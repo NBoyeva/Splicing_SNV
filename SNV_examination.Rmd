@@ -9,6 +9,7 @@ output: html_document
 library(ggplot2)
 library(VariantAnnotation)
 library(dplyr)
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNV_examination_functions.R")
 ```
 
 ```{r}
@@ -38,24 +39,10 @@ labels <- c('Gen 1',
             'Nas Merged')
 ```
 
-```{r}
-gen1 <- load_vcf(gen_vcf1_path)
-gen1_info <- info(readVcf(gen_vcf1_path, "hg38"))
-gen1_info$AC
-gen1_info$AF
-gen1_info$AN
-gen1_info$DP
-gen1_info$MLEAC
-gen1_info$MLEAF
-gen1_info$MQ
-gen1_info$QD
-gen1_info$SOR
-params <- c('AC', 'AF', 'AN', 'DP', 'MLEAC', 'MLEAF', 'MQ', 'QD', 'SOR')
-```
-
 # Comparison of SNV quality metrics across files
 
 ```{r}
+gen1 <- readVcf(gen_vcf1_path, "hg38")
 descriptions <- info(header(gen1))
 descriptions_df <- data.frame(Description = descriptions$Description,
                               row.names = rownames(descriptions))
@@ -63,12 +50,23 @@ descriptions_df
 ```
 
 ```{r}
-# Create the full_info_tables
 full_info_table <- create_full_info_table(filepaths)
 ```
 
 ```{r}
 plot_density(full_info_table, "AC", labels, descriptions)
+```
+
+```{r}
+plot_density(full_info_table, "AF", labels, descriptions)
+```
+
+```{r}
+plot_density(full_info_table, "MLEAC", labels, descriptions)
+```
+
+```{r}
+plot_density(full_info_table, "MLEAF", labels, descriptions)
 ```
 
 ```{r}
@@ -89,7 +87,7 @@ plot_density(full_info_table, 'SOR', labels, descriptions)
 
 # Analysis of intersections
 
-```{r message=FALSE, warning=FALSE}
+```{r message=FALSE, warning=FALSE, include=FALSE}
 library(VennDiagram)
 flog.threshold(ERROR)
 source('venn_plot_functions.R')
@@ -115,7 +113,7 @@ nas_merged <- load_vcf(nas_merged_vcf_path)
 
 ## Genomic SNVs
 
-```{r}
+```{r echo=TRUE}
 plot_venn_4sets(data_list=list(gen1_uf, 
                           gen1,
                           gen2_uf,
@@ -160,6 +158,63 @@ plot_venn_4sets(data_list=list(nas1,
 length(gen_merged@ranges@NAMES)
 length(nas_merged@ranges@NAMES)
 length(intersect(gen_merged@ranges@NAMES, nas_merged@ranges@NAMES))
+```
+
+```{r}
+gen_common <- gen_merged[gen_merged@ranges@NAMES %in% 
+                           Reduce(intersect, list(gen1@ranges@NAMES, 
+                                                  gen2@ranges@NAMES, 
+                                                  gen_merged@ranges@NAMES))]
+
+nas_common <- nas_merged[nas_merged@ranges@NAMES %in% 
+                           Reduce(intersect, list(nas1@ranges@NAMES, 
+                                                  nas2@ranges@NAMES, 
+                                                  nas3@ranges@NAMES, 
+                                                  nas_merged@ranges@NAMES))]
+```
+
+```{r}
+plot_venn_4sets(data_list=list(gen_merged, 
+                               gen_common, 
+                               nas_merged, 
+                               nas_common),
+          param='All SNPs', 
+          labels=c("Genomic (merged samples)",
+                   "Genomic (intersection)",
+                   "Nascent (merged samples)",
+                   "Nascent (intersection)"), 
+          title="Genomic and nascent RNA SNVs")
+```
+
+```{r}
+gen_common_uf <- gen_merged_uf[gen_merged_uf@ranges@NAMES %in% 
+                           Reduce(intersect, list(gen1_uf@ranges@NAMES, 
+                                                  gen2_uf@ranges@NAMES, 
+                                                  gen_merged_uf@ranges@NAMES))]
+
+nas_common_uf <- nas_merged_uf[nas_merged_uf@ranges@NAMES %in% 
+                           Reduce(intersect, list(nas1_uf@ranges@NAMES, 
+                                                  nas2_uf@ranges@NAMES, 
+                                                  nas3_uf@ranges@NAMES, 
+                                                  nas_merged_uf@ranges@NAMES))]
+
+plot_venn_4sets(data_list=list(gen_merged_uf, 
+                               gen_common_uf, 
+                               nas_merged_uf, 
+                               nas_common_uf),
+          param='All SNPs', 
+          labels=c("Genomic (merged samples)",
+                   "Genomic (intersection)",
+                   "Nascent (merged samples)",
+                   "Nascent (intersection)"), 
+          title="Genomic and nascent RNA SNVs (unfiltered)")
+```
+
+```{r}
+common_snps <- Reduce(intersect, list(nas1@ranges@NAMES, 
+                                      nas2@ranges@NAMES, 
+                                      nas3@ranges@NAMES, 
+                                      nas_merged@ranges@NAMES))
 ```
 
 # Comparison of unique and intersecting SNVs
