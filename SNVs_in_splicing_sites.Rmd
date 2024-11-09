@@ -5,13 +5,58 @@ date: "2024-11-09"
 output: pdf_document
 ---
 
-```{r}
-fd <- '/home/nadzeya/praktika/'
+```{r include=FALSE}
+fd <- '/home/nadzeya/praktika'
+library(VariantAnnotation)
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNV_examination_functions.R")
 source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNVs_in_splicing_sites_functions.R")
+```
+
+```{r}
+readTxt <- function(path) {
+  read.table(file=path, 
+             sep="\t",
+             header=TRUE,
+             quote="\"",
+             as.is=TRUE)
+}
+```
+
+```{r}
+nas_vcf1_path <- file.path(fd, "nas1_snps_f.vcf.gz")
+nas_vcf2_path <- file.path(fd, "nas2_snps_f.vcf.gz")
+nas_vcf3_path <- file.path(fd, "nas3_2_snps_f.vcf.gz")
+nas_merged_vcf_path <- file.path(fd, "nas_merged_snps_f.vcf.gz")
+
+nas1 <- load_vcf(nas_vcf1_path)
+nas2 <- load_vcf(nas_vcf2_path)
+nas3 <- load_vcf(nas_vcf3_path)
+nas_merged <- load_vcf(nas_merged_vcf_path)
+
+nas_common <- nas_merged[nas_merged@ranges@NAMES %in% 
+                           Reduce(intersect, list(nas1@ranges@NAMES, 
+                                                  nas2@ranges@NAMES, 
+                                                  nas3@ranges@NAMES, 
+                                                  nas_merged@ranges@NAMES))]
 ```
 
 
 ```{r}
-ss_coords <- get_SS_from_EEJ(file.path(fd, "EEJ_filtered_DC.txt"))
+ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
+ss_df$seqnames <- gsub("chr", "", ss_df$seqnames)
+ss_df_short <- ss_df[,1:8]
+ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=ss_df_short)
+```
+
+```{r}
+dc_nas_common <- find_overlaps_jointSS(ss_coords, nas_common, ss_df_short)
+write.table(dc_nas_common, file=file.path(fd, "dc_eej_nas_common.txt"), sep='\t')
+dc_nas_common
+```
+
+```{r}
+dc_nas_merged <- find_overlaps_jointSS(ss_coords, nas_merged, ss_df_short)
+write.table(dc_nas_merged, file=file.path(fd, "dc_eej_nas_merged.txt"), sep='\t')
+dc_nas_merged
 ```
 
