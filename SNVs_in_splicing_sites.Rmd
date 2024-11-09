@@ -1,0 +1,17 @@
+---
+title: "SNVs in Splicing SItes"
+author: "Nadzeya Boyeva"
+date: "2024-11-09"
+output: pdf_document
+---
+
+```{r}
+fd <- '/home/nadzeya/praktika/'
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNVs_in_splicing_sites_functions.R")
+```
+
+
+```{r}
+ss_coords <- get_SS_from_EEJ(file.path(fd, "EEJ_filtered_DC.txt"))
+```
+
