@@ -81,11 +81,16 @@ pc_colnames[duplicated(pc_colnames)]
 
 ```{r}
 eej_dataset <- file.path(fd, "Dataset of EEJs")
-eej_dataset_colnames <- c()
-for (path in list.files(eej_dataset)) {
-  file <- readTxt(file.path(eej_dataset, path))
-  eej_dataset_colnames <- c(eej_dataset_colnames, colnames(file))
-}
+
+# List all file paths
+file_paths <- list.files(eej_dataset, full.names = TRUE)
+
+# Use lapply to read all files
+eej_dataset_files <- lapply(file_paths, readTxt)
+
+# Combine column names from all dataframes
+eej_dataset_colnames <- unique(unlist(lapply(eej_dataset_files, colnames)))
+
 ```
 
 ```{r}
@@ -100,7 +105,7 @@ Six samples are present in Kasumi matrices, but not EEJ dataset:
 ```{r}
 print(paste("Number of samples in Kasumi matrices:", 
             length(kasumi_colnames)))
-print(paste("Number of samples in Kasumi matrices nor present in EEJ dataset:", 
+print(paste("Number of samples in Kasumi matrices not present in EEJ dataset:", 
             length(kasumi_colnames[!(kasumi_colnames %in% eej_dataset_colnames)])))
 ```
 
@@ -112,4 +117,23 @@ All samples from PC matrices which are not in EEJ dataset are present in Kasumi 
 
 ```{r}
 pc_colnames[!(pc_colnames %in% eej_dataset_colnames)]
+```
+
+# Creation of full dataset
+
+```{r}
+library(dplyr)
+
+kasumi_dir <- file.path(fd, "Kasumi-1_cells")
+eej_dataset_dir <- file.path(fd, "Dataset_of_EEJs")
+all_files <- c(list.files(eej_dataset_dir, full.names = TRUE),
+               list.files(kasumi_dir, full.names = TRUE))
+combined_df <- all_files[[1]]
+
+for (i in 2:length(all_files)) {
+  combined_df <- full_join(combined_df, 
+                           all_files[[i]], by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"))
+}
+
+combined_df
 ```
