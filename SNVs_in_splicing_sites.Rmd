@@ -40,7 +40,6 @@ nas_common <- nas_merged[nas_merged@ranges@NAMES %in%
                                                   nas_merged@ranges@NAMES))]
 ```
 
-
 ```{r}
 ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
 ss_df$seqnames <- gsub("chr", "", ss_df$seqnames)
@@ -58,4 +57,38 @@ dc_nas_common
 dc_nas_merged <- find_overlaps_jointSS(ss_coords, nas_merged, ss_df_short)
 write.table(dc_nas_merged, file=file.path(fd, "dc_eej_nas_merged.txt"), sep='\t')
 dc_nas_merged
+```
+
+```{r}
+leg <- readTxt(file.path(fd, "RUNX1-RUNX1T1 project, list of expressed genes"))
+leg
+```
+
+# Actively expressing genes selection
+
+```{r}
+dc_nas_common[dc_nas_common$gene_id %in% leg$gene_id,]
+```
+
+```{r}
+dc_nas_merged[dc_nas_merged$gene_id %in% leg$gene_id,]
+```
+
+# Check normally not-expressing genes with SNVs
+
+```{r}
+genes_annotation <- readTxt(file.path(fd, 
+                                      "Ensembl release 85, GRCh38.p7, annotations of genes.txt"))
+```
+
+```{r}
+dc_nas_common_na <- dc_nas_common[!(dc_nas_common$gene_id %in% leg$gene_id),]
+```
+
+```{r}
+neg <- genes_annotation$gene_name[genes_annotation$gene_id %in%
+                             dc_nas_common_na$gene_id]
+for (gene in neg) {
+  print(gene)
+}
 ```
