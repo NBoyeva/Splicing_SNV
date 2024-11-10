@@ -70,8 +70,14 @@ find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
                              start(ss3_snp@ranges))
   ss_overlapped$snp_ref <- c(as.character(ss5_snp$REF),
                              as.character(ss3_snp$REF))
-  ss_overlapped$snp_alt <- c(unlist(lapply(ss5_snp$ALT, as.character)),
-                             unlist(lapply(ss3_snp$ALT, as.character)))
+  
+  ss5_snp_alt <- sapply(ss5_snp$ALT, 
+                        function(x) paste(as.character(x), collapse = ","))
+  ss3_snp_alt <- sapply(ss3_snp$ALT, 
+                        function(x) paste(as.character(x), collapse = ","))
+  
+  ss_overlapped$snp_alt <- c(ss5_snp_alt,
+                             ss3_snp_alt)
   ss_overlapped$snp_ss <- c(rep("5", length(ss5_snp)), 
                             rep("3", length(ss3_snp)))
   
