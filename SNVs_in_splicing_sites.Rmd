@@ -9,6 +9,7 @@ output: pdf_document
 fd <- '/home/nadzeya/praktika'
 library(VariantAnnotation)
 library(ggplot2)
+library(dplyr)
 source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNV_examination_functions.R")
 source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNVs_in_splicing_sites_functions.R")
 ```
@@ -81,6 +82,49 @@ ggplot(dc_combined, aes(x = snp_pos_in_ss, color = group)) +
     color = "Group"
   ) +
   theme_minimal()  # Use a clean theme
+```
+
+```{r}
+counts <- dc_combined %>%
+  group_by(group, snp_pos_in_ss) %>%
+  summarise(count = n(), .groups = "drop")
+
+dinucleotide_counts <- counts %>%
+  filter(
+    (group == "5SS +" & (snp_pos_in_ss == 3 | snp_pos_in_ss == 4)) |  # GU for 5SS +
+    (group == "5SS -" & (snp_pos_in_ss == 4 | snp_pos_in_ss == 5)) |  # GU for 5SS -
+    (group == "3SS +" & (snp_pos_in_ss == 18 | snp_pos_in_ss == 19)) | # AG for 3SS +
+    (group == "3SS -" & (snp_pos_in_ss == 3 | snp_pos_in_ss == 4))    # AG for 3SS -
+  )
+
+ggplot(dc_combined, aes(x = snp_pos_in_ss, color = group)) +
+  geom_freqpoly(binwidth = 1, linewidth = 1) +  # Main frequency lines
+  geom_point(
+    data = dinucleotide_counts,
+    aes(x = snp_pos_in_ss, y = count, color = group),
+    size = 4, shape = 19
+  ) +
+  labs(
+    title = "Frequency Plot of SNP Positions with Splice Site Dinucleotides",
+    x = "SNP Position in Splice Site",
+    y = "Count",
+    color = "Group"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
+ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
+file <- FaFile(ref_path, index=ref_idx_path)
+fasta <- open(file)
+```
+
+```{r}
+dc_nas_common <- add_refseqs(fasta, dc_nas_common)
+dc_nas_common <- add_altseqs(dc_nas_common)
+write.table(dc_nas_common, file=file.path(fd, "dc_eej_nas_common.txt"), sep='\t')
+dc_nas_common
 ```
 
 ```{r}

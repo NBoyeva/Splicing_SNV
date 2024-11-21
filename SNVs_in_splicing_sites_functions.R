@@ -102,3 +102,48 @@ find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
   
   return(ss_overlapped)
 }
+
+
+add_refseqs <- function(ref, df) {
+  ss_gr <- GRanges(IRanges(start = df$ss_start, end = df$ss_end), 
+                   seqnames = df$seqnames, 
+                   strand = rep("+", length(df$strand)))
+  df$refseq <- unname(as.character(getSeq(ref, ss_gr)))
+  
+  return(df)
+}
+
+
+add_altseqs <- function(df) {
+  
+  # Add the altseq column
+  df$altseq <- apply(df, 1, function(row) {
+    # Extract row values
+    snp_pos <- as.numeric(row["snp_pos_in_ss"])
+    snp_ref <- row["snp_ref"]
+    snp_alt <- row["snp_alt"]
+    refseq <- row["refseq"]
+    
+    # Check if snp_pos is within bounds
+    if (snp_pos < 0 || snp_pos >= nchar(refseq)) {
+      warning(sprintf("snp_pos_in_ss out of bounds for eej_id %s. Setting altseq to NA.", row["eej_id"]))
+      return(NA)
+    }
+    
+    # Check if refseq nucleotide matches snp_ref
+    if (substr(refseq, snp_pos + 1, snp_pos + 1) != snp_ref) {
+      warning(sprintf(
+        "Mismatch in refseq and snp_ref at eej_id %s: refseq[%d] = %s, expected %s. Setting altseq to NA.",
+        row["eej_id"], snp_pos + 1, substr(refseq, snp_pos + 1, snp_pos + 1), snp_ref
+      ))
+      return(NA)
+    }
+    
+    # Replace the nucleotide and return the new sequence
+    altseq <- refseq
+    substr(altseq, snp_pos + 1, snp_pos + 1) <- snp_alt
+    return(altseq)
+  })
+  
+  return(df)
+}
