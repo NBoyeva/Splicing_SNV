@@ -8,6 +8,7 @@ output: pdf_document
 ```{r include=FALSE}
 fd <- '/home/nadzeya/praktika'
 library(VariantAnnotation)
+library(ggplot2)
 source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNV_examination_functions.R")
 source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNVs_in_splicing_sites_functions.R")
 ```
@@ -54,6 +55,35 @@ dc_nas_common
 ```
 
 ```{r}
+#dc_nas_common <- readTxt(file.path(fd, "dc_eej_nas_common.txt"))
+dc_nas_common_5ss_plus <- dc_nas_common[(dc_nas_common$ss == 5 & dc_nas_common$strand == '+'),]
+dc_nas_common_5ss_minus <- dc_nas_common[(dc_nas_common$ss == 5 & dc_nas_common$strand == '-'),]
+dc_nas_common_3ss_plus <- dc_nas_common[(dc_nas_common$ss == 3 & dc_nas_common$strand == '+'),]
+dc_nas_common_3ss_minus <- dc_nas_common[(dc_nas_common$ss == 3 & dc_nas_common$strand == '-'),]
+```
+
+```{r}
+# Combine the data into one dataframe with group labels
+dc_combined <- rbind(
+  data.frame(snp_pos_in_ss = dc_nas_common_5ss_plus$snp_pos_in_ss, group = "5SS +"),
+  data.frame(snp_pos_in_ss = dc_nas_common_5ss_minus$snp_pos_in_ss, group = "5SS -"),
+  data.frame(snp_pos_in_ss = dc_nas_common_3ss_plus$snp_pos_in_ss, group = "3SS +"),
+  data.frame(snp_pos_in_ss = dc_nas_common_3ss_minus$snp_pos_in_ss, group = "3SS -")
+)
+
+# Create the ggplot density plot
+ggplot(dc_combined, aes(x = snp_pos_in_ss, color = group)) +
+  geom_density(linewidth = 1) +  # Add density lines
+  labs(
+    title = "Density Plot of SNP Positions by Splice Site and Strand",
+    x = "SNP Position in Splice Site",
+    y = "Density",
+    color = "Group"
+  ) +
+  theme_minimal()  # Use a clean theme
+```
+
+```{r}
 dc_nas_merged <- find_overlaps_jointSS(ss_coords, nas_merged, ss_df_short)
 write.table(dc_nas_merged, file=file.path(fd, "dc_eej_nas_merged.txt"), sep='\t')
 dc_nas_merged
@@ -91,4 +121,16 @@ neg <- genes_annotation$gene_name[genes_annotation$gene_id %in%
 for (gene in neg) {
   print(gene)
 }
+```
+
+```{r}
+ss_df_short
+```
+
+```{r}
+ss_coords$fiveSSs
+```
+
+```{r}
+dc_nas_common
 ```

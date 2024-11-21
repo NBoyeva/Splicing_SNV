@@ -64,6 +64,23 @@ find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
   ss_overlapped_idx <- c(ss5_overlap@to, ss3_overlap@to)
   ss_overlapped <- ss_df[ss_overlapped_idx,]
   
+  ss_overlapped$ss <- c(rep("5", length(ss5_snp)), 
+                        rep("3", length(ss3_snp)))
+  
+  #ss_overlapped <- ss_overlapped[!duplicated(ss_overlapped),]
+  
+  ss5 <- ss_coords$fiveSSs[match(ss_df[ss5_overlap@to,]$eej_id, ss_coords$fiveSSs$eej_id)]
+  ss3 <- ss_coords$threeSSs[match(ss_df[ss3_overlap@to,]$eej_id, ss_coords$threeSSs$eej_id)]
+  
+  ss_overlapped$ss_start <- c(ss5@ranges@start, 
+                              ss3@ranges@start)
+  ss_overlapped$ss_end <- c(ss5@ranges@start +
+                              ss5@ranges@width -
+                              1,
+                            ss3@ranges@start +
+                              ss3@ranges@width -
+                              1)
+  
   ss_overlapped$snp_id <- c(ss5_snp@ranges@NAMES, 
                             ss3_snp@ranges@NAMES)
   ss_overlapped$snp_pos <- c(start(ss5_snp@ranges),
@@ -78,9 +95,9 @@ find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
   
   ss_overlapped$snp_alt <- c(ss5_snp_alt,
                              ss3_snp_alt)
-  ss_overlapped$snp_ss <- c(rep("5", length(ss5_snp)), 
-                            rep("3", length(ss3_snp)))
   
+  ss_overlapped$snp_pos_in_ss <- ss_overlapped$snp_pos - ss_overlapped$ss_start
+
   ss_overlapped <- ss_overlapped[!duplicated(ss_overlapped),]
   
   return(ss_overlapped)
