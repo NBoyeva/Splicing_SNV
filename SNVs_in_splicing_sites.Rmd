@@ -5,6 +5,8 @@ date: "2024-11-09"
 output: pdf_document
 ---
 
+# Search of SNVs in Splicing Sites
+
 ```{r include=FALSE}
 fd <- '/home/nadzeya/praktika'
 library(VariantAnnotation)
@@ -24,6 +26,8 @@ readTxt <- function(path) {
 }
 ```
 
+Read VCF files from first, second and third nascent RNA samples, and all samples merged into one file on alignment step. Retrieve common SNVs for all four files (nas_common).
+
 ```{r}
 nas_vcf1_path <- file.path(fd, "nas1_snps_f.vcf.gz")
 nas_vcf2_path <- file.path(fd, "nas2_snps_f.vcf.gz")
@@ -42,18 +46,23 @@ nas_common <- nas_merged[nas_merged@ranges@NAMES %in%
                                                   nas_merged@ranges@NAMES))]
 ```
 
+Load filtered EEJ dataset. DC is for double-checked: each EEJ has read count \>=10 and log10CPM \>=-1 at least in one experiment. Unify chromosome notation. Selects metadata EEJ columns. Extract SSs coordinates from EEJ coordinates.
+
 ```{r}
 ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
 ss_df$seqnames <- gsub("chr", "", ss_df$seqnames)
-ss_df_short <- ss_df[,1:8]
+ss_df_short <- ss_df[,1:8] # EEJ metadata
 ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=ss_df_short)
 ```
 
+Find SNVs overlapping with SSs.
+
 ```{r}
-dc_nas_common <- find_overlaps_jointSS(ss_coords, nas_common, ss_df_short)
-write.table(dc_nas_common, file=file.path(fd, "dc_eej_nas_common.txt"), sep='\t')
-dc_nas_common
+dc_nas_common <- find_overlaps_jointSS(ss_coords, nas_common, ss_df_short, source="EEJ")
+head(dc_nas_common)
 ```
+
+Create separate dataframes for 5' and 3' SSs on + and - strands.
 
 ```{r}
 #dc_nas_common <- readTxt(file.path(fd, "dc_eej_nas_common.txt"))
@@ -62,6 +71,8 @@ dc_nas_common_5ss_minus <- dc_nas_common[(dc_nas_common$ss == 5 & dc_nas_common$
 dc_nas_common_3ss_plus <- dc_nas_common[(dc_nas_common$ss == 3 & dc_nas_common$strand == '+'),]
 dc_nas_common_3ss_minus <- dc_nas_common[(dc_nas_common$ss == 3 & dc_nas_common$strand == '-'),]
 ```
+
+Plot SNVs distribution in SSs.
 
 ```{r}
 # Combine the data into one dataframe with group labels
@@ -81,8 +92,10 @@ ggplot(dc_combined, aes(x = snp_pos_in_ss, color = group)) +
     y = "Density",
     color = "Group"
   ) +
-  theme_minimal()  # Use a clean theme
+  theme_minimal()
 ```
+
+Create count plot of SNVs in each location in SSs. Circles on each line represent theoretical locations of SSs' dinucleotides.
 
 ```{r}
 counts <- dc_combined %>%
@@ -113,6 +126,8 @@ ggplot(dc_combined, aes(x = snp_pos_in_ss, color = group)) +
   theme_minimal()
 ```
 
+Add reference and alternative sequences of SSs.
+
 ```{r}
 ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
 ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
@@ -121,60 +136,132 @@ fasta <- open(file)
 ```
 
 ```{r}
-dc_nas_common <- add_refseqs(fasta, dc_nas_common)
-dc_nas_common <- add_altseqs(dc_nas_common)
+dc_nas_common <- add_refseqs(fasta, dc_nas_common, source="EEJ")
+dc_nas_common <- add_altseqs(dc_nas_common, source="EEJ")
 write.table(dc_nas_common, file=file.path(fd, "dc_eej_nas_common.txt"), sep='\t')
-dc_nas_common
+head(dc_nas_common)
+```
+
+Repeat the same steps for VCF resulting from merged alignment.
+
+```{r}
+dc_nas_merged <- find_overlaps_jointSS(ss_coords, nas_merged, ss_df_short, source="EEJ")
+dc_nas_merged <- add_refseqs(fasta, dc_nas_merged, source="EEJ")
+dc_nas_merged <- add_altseqs(dc_nas_merged, source="EEJ")
+write.table(dc_nas_merged, file=file.path(fd, "dc_eej_nas_merged.txt"), sep='\t')
+head(dc_nas_merged)
+```
+
+## UCSC Intron Annotation
+
+```{r}
+bed_path = file.path(fd, "introns.bed")
+introns <- import(con = bed_path, format = "BED")
+introns@seqnames <- gsub("chr", "", introns@seqnames)
+introns <- introns[nchar(as.character(introns@seqnames)) < 3, ]
+introns@seqnames <- droplevels(introns@seqnames)
+introns_df <- as.data.frame(introns)
+head(introns_df)
 ```
 
 ```{r}
-dc_nas_merged <- find_overlaps_jointSS(ss_coords, nas_merged, ss_df_short)
-write.table(dc_nas_merged, file=file.path(fd, "dc_eej_nas_merged.txt"), sep='\t')
-dc_nas_merged
+ss_coords_introns <- get_SS_from_introns(read_from_file = FALSE, df=introns_df)
+introns_nas_common <- find_overlaps_jointSS(ss_coords_introns, nas_common, introns_df, source="introns")
+introns_nas_common <- add_refseqs(fasta, introns_nas_common, source="introns")
+introns_nas_common <- add_altseqs(introns_nas_common, source="introns")
+
+introns_nas_common$refseq_id <- sapply(strsplit(introns_nas_common$name, "_"), function(parts) {
+  paste(parts[1], parts[2], sep = "_")
+})
+
+write.table(introns_nas_common, file=file.path(fd, "introns_nas_common.txt"), sep='\t')
+head(introns_nas_common)
 ```
+
+```{r}
+introns_nas_common_5ss_plus <- introns_nas_common[(introns_nas_common$ss == 5 & introns_nas_common$strand == '+'),]
+introns_nas_common_5ss_minus <- introns_nas_common[(introns_nas_common$ss == 5 & introns_nas_common$strand == '-'),]
+introns_nas_common_3ss_plus <- introns_nas_common[(introns_nas_common$ss == 3 & introns_nas_common$strand == '+'),]
+introns_nas_common_3ss_minus <- introns_nas_common[(introns_nas_common$ss == 3 & introns_nas_common$strand == '-'),]
+
+introns_combined <- rbind(
+  data.frame(snp_pos_in_ss = introns_nas_common_5ss_plus$snp_pos_in_ss, group = "5SS +"),
+  data.frame(snp_pos_in_ss = introns_nas_common_5ss_minus$snp_pos_in_ss, group = "5SS -"),
+  data.frame(snp_pos_in_ss = introns_nas_common_3ss_plus$snp_pos_in_ss, group = "3SS +"),
+  data.frame(snp_pos_in_ss = introns_nas_common_3ss_minus$snp_pos_in_ss, group = "3SS -")
+)
+```
+
+```{r}
+introns_counts <- introns_combined %>%
+  group_by(group, snp_pos_in_ss) %>%
+  summarise(count = n(), .groups = "drop")
+
+introns_dinucleotide_counts <- introns_counts %>%
+  filter(
+    (group == "5SS +" & (snp_pos_in_ss == 3 | snp_pos_in_ss == 4)) |  # GU for 5SS +
+    (group == "5SS -" & (snp_pos_in_ss == 4 | snp_pos_in_ss == 5)) |  # GU for 5SS -
+    (group == "3SS +" & (snp_pos_in_ss == 18 | snp_pos_in_ss == 19)) | # AG for 3SS +
+    (group == "3SS -" & (snp_pos_in_ss == 3 | snp_pos_in_ss == 4))    # AG for 3SS -
+  )
+
+ggplot(introns_combined, aes(x = snp_pos_in_ss, color = group)) +
+  geom_freqpoly(binwidth = 1, linewidth = 1) +  # Main frequency lines
+  geom_point(
+    data = introns_dinucleotide_counts,
+    aes(x = snp_pos_in_ss, y = count, color = group),
+    size = 4, shape = 19
+  ) +
+  labs(
+    title = "Frequency Plot of SNP Positions with Splice Site Dinucleotides",
+    x = "SNP Position in Splice Site",
+    y = "Count",
+    color = "Group"
+  ) +
+  theme_minimal()
+```
+
+Load list of expressed genes (leg).
 
 ```{r}
 leg <- readTxt(file.path(fd, "RUNX1-RUNX1T1 project, list of expressed genes"))
-leg
-```
-
-# Actively expressing genes selection
-
-```{r}
-dc_nas_common[dc_nas_common$gene_id %in% leg$gene_id,]
+head(leg)
 ```
 
 ```{r}
-dc_nas_merged[dc_nas_merged$gene_id %in% leg$gene_id,]
+introns_nas_common_dinucl <- rbind(
+  introns_nas_common[introns_nas_common$ss == "5" & 
+                       introns_nas_common$strand == "+" &
+                       (introns_nas_common$snp_pos_in_ss %in% c("3", "4")),],
+  introns_nas_common[introns_nas_common$ss == "5" & 
+                       introns_nas_common$strand == "-" &
+                       (introns_nas_common$snp_pos_in_ss %in% c("4", "5")),],
+  introns_nas_common[introns_nas_common$ss == "3" & 
+                       introns_nas_common$strand == "+" &
+                       (introns_nas_common$snp_pos_in_ss %in% c("18", "19")),],
+  introns_nas_common[introns_nas_common$ss == "3" & 
+                       introns_nas_common$strand == "-" &
+                       (introns_nas_common$snp_pos_in_ss %in% c("3", "4")),])
+
+leg_dinucl <- leg[match(introns_nas_common_dinucl$refseq_id, leg$refseq_id),]
+introns_nas_common_dinucl$gene_symbol <- leg_dinucl$gene_symbol
+introns_nas_common_dinucl$gene_name <- leg_dinucl$gene_name
+
+write.table(introns_nas_common_dinucl, file=file.path(fd, "introns_nas_common_dinucleotides.txt"), sep='\t')
 ```
 
-# Check normally not-expressing genes with SNVs
+# Check Intersections With List of Expressed Genes
 
 ```{r}
-genes_annotation <- readTxt(file.path(fd, 
-                                      "Ensembl release 85, GRCh38.p7, annotations of genes.txt"))
-```
-
-```{r}
-dc_nas_common_na <- dc_nas_common[!(dc_nas_common$gene_id %in% leg$gene_id),]
-```
-
-```{r}
-neg <- genes_annotation$gene_name[genes_annotation$gene_id %in%
-                             dc_nas_common_na$gene_id]
-for (gene in neg) {
-  print(gene)
-}
-```
-
-```{r}
-ss_df_short
-```
-
-```{r}
-ss_coords$fiveSSs
+mean(is.na(dc_nas_common[!match(dc_nas_common$gene_id, 
+                                leg$gene_id),]))
 ```
 
 ```{r}
-dc_nas_common
+mean(is.na(dc_nas_merged[!match(dc_nas_merged$gene_id, 
+                                leg$gene_id),]))
+```
+
+```{r}
+mean(is.na(introns_nas_common[!match(introns_nas_common$refseq_id, leg$refseq_id),]))
 ```
