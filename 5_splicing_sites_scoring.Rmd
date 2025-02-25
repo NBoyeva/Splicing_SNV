@@ -1,0 +1,28 @@
+---
+title: "Splicing sites scoring"
+author: "Nadzeya Boyeva"
+date: "2025-02-24"
+output: pdf_document
+---
+```{r}
+library(VarCon)
+library(dplyr)
+```
+
+```{r}
+eejs <- readTxt(file.path(fd, "dc_eej_nas_common.txt"))
+introns <- readTxt(file.path(fd, "introns_nas_common.txt"))
+eejs
+```
+
+```{r}
+add_scores <- function(df) {
+  df$ref_score <- unname(mapply(calculateMaxEntScanScore, df$refseq, df$ss))
+  df$alt_score <- unname(mapply(calculateMaxEntScanScore, df$altseq, df$ss))
+  return(df)
+}
+
+eejs <- add_scores(eejs)
+introns <- add_scores(introns)
+
+```

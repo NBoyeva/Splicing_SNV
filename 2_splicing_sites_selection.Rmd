@@ -1,0 +1,241 @@
+---
+title: "Splising Sites Selection"
+author: "Nadzeya Boyeva"
+date: "2024-11-05"
+output: pdf_document
+---
+
+```{r}
+library(dplyr)
+library(edgeR)
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/2_splicing_sites_selection_functions.R")
+```
+
+
+# Sites from EEJ gene related matrices
+
+## Kasumi cell line matrices
+
+```{r}
+fd <- '/home/nadzeya/praktika/'
+path1_kasumi <- file.path(fd, 
+                          "Kasumi-1 cells",
+                          "RUNX1-RUNX1T1 project, EEJs from Kasumi-1 cells, genes-related matrix.txt")
+path2_kasumi <-file.path(fd, 
+                         "Kasumi-1 cells",
+                         "RUNX1-RUNX1T1 project, EEJs, genes-related matrix.txt")
+path3_kasumi <- file.path(fd, 
+                          "Kasumi-1 cells", 
+                          "WT1 project, EEJs, genes-related matrix.txt")
+```
+
+```{r}
+readTxt <- function(path) {
+  read.table(file=path, 
+             sep="\t",
+             header=TRUE,
+             quote="\"",
+             as.is=TRUE)
+}
+
+kasumi1 <- readTxt(path1_kasumi)
+kasumi2 <- readTxt(path2_kasumi)
+kasumi3 <- readTxt(path3_kasumi)
+```
+
+```{r}
+kasumi1 <- kasumi1[1:14]
+kasumi2 <- kasumi2[, !names(kasumi2) %in% "intron_length"]
+kasumi3 <- kasumi3[1:17]
+
+kasumi_colnames <- c(colnames(kasumi1)[8:ncol(kasumi1)],
+                    colnames(kasumi2)[8:ncol(kasumi2)],
+                    colnames(kasumi3)[8:ncol(kasumi3)])
+kasumi_colnames
+```
+
+```{r}
+colnames(kasumi1)[8:ncol(kasumi1)]
+colnames(kasumi2)[8:ncol(kasumi2)]
+colnames(kasumi3)[8:ncol(kasumi3)]
+```
+
+## OML primary cells
+
+```{r}
+pc_files_path <- file.path(fd, "Primary cells")
+pc_files <- list()
+pc_colnames <- c()
+i <- 1
+for (path in list.files(pc_files_path)) {
+  pc_files[[i]] <- readTxt(file.path(pc_files_path, path))
+  pc_colnames <- c(pc_colnames, colnames(pc_files[[i]]))
+  i <- i + 1
+}
+```
+
+```{r}
+common_colnames <- c("eej_id", "gene_id", "seqnames", 
+                     "start", "end", "width", "strand", "intron_length")
+
+pc_colnames <- pc_colnames[!(pc_colnames %in% common_colnames)]
+length(pc_colnames)
+length(unique(pc_colnames))
+pc_colnames[duplicated(pc_colnames)]
+```
+
+## General dataset of EEJs
+
+```{r}
+eej_dataset <- file.path(fd, "Dataset of EEJs")
+
+# List all file paths
+file_paths <- list.files(eej_dataset, full.names = TRUE)
+
+# Use lapply to read all files
+eej_dataset_files <- lapply(file_paths, readTxt)
+
+# Combine column names from all dataframes
+eej_dataset_colnames <- unique(unlist(lapply(eej_dataset_files, colnames)))
+
+```
+
+```{r}
+eej_dataset_colnames <- eej_dataset_colnames[!(eej_dataset_colnames %in% common_colnames)]
+length(eej_dataset_colnames)
+length(unique(eej_dataset_colnames))
+eej_dataset_colnames[(duplicated(eej_dataset_colnames))]
+```
+
+Six samples are present in Kasumi matrices, but not EEJ dataset:
+
+```{r}
+print(paste("Number of samples in Kasumi matrices:", 
+            length(kasumi_colnames)))
+print(paste("Number of samples in Kasumi matrices not present in EEJ dataset:", 
+            length(kasumi_colnames[!(kasumi_colnames %in% eej_dataset_colnames)])))
+```
+
+```{r}
+kasumi_colnames[!(kasumi_colnames %in% eej_dataset_colnames)]
+```
+
+All samples from PC matrices which are not in EEJ dataset are present in Kasumi matrices. Therefore, PC matrices will not be used in following analysis.
+
+```{r}
+pc_colnames[!(pc_colnames %in% eej_dataset_colnames)]
+```
+
+# Creation of full dataset
+
+```{r}
+library(dplyr)
+
+kasumi_dir <- file.path(fd, "Kasumi-1_cells")
+eej_dataset_dir <- file.path(fd, "Dataset_of_EEJs")
+all_files <- c(list.files(eej_dataset_dir, full.names = TRUE),
+               list.files(kasumi_dir, full.names = TRUE))
+combined_df <- all_files[[1]]
+
+for (i in 2:length(all_files)) {
+  combined_df <- full_join(combined_df, 
+                           all_files[[i]], by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"))
+}
+
+combined_df
+```
+
+```{r}
+raw_eejs <- get_eej(combined_df, use_raw)
+```
+
+```{r}
+ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
+mean(ss_df$sum_samples)
+min(ss_df$sum_samples)
+ncol(ss_df)
+ss_df$sum_samples[1]
+ss_df[1, !(colnames(ss_df) %in% 
+                                    c("eej_id", "gene_id", "seqnames", 
+                                    "start", "end", "width", "strand", 
+                                    "intron_length", "sum_samples"))]
+
+ss_df$sum_samples_2 <- rowSums(ss_df[, !(colnames(ss_df) %in% 
+                                    c("eej_id", "gene_id", "seqnames", 
+                                    "start", "end", "width", "strand", 
+                                    "intron_length", "sum_samples"))])
+
+mean(ss_df$sum_samples_2)
+max(ss_df$sum_samples_2)
+mean(ss_df$sum_samples_2 > 1)
+plot(density(log10(ss_df$sum_samples_2)))
+
+ss_df$sum_samples_ratio <- ss_df$sum_samples_2 / 443
+write.table(ss_df, file=file.path(fd, "EEJ_filtered_DC_recalc.txt"), sep='\t')
+
+ss_df_300samples <- ss_df[ss_df$sum_samples_2 > 300,]
+write.table(ss_df_300samples, file=file.path(fd, "EEJ_filtered_DC_300.txt"), sep='\t')
+
+ss_df_200samples <- ss_df[ss_df$sum_samples_2 > 200,]
+write.table(ss_df_200samples, file=file.path(fd, "EEJ_filtered_DC_200.txt"), sep='\t')
+
+plot(density(ss_df_300samples$sum_samples_2))
+```
+
+# Setecting sites within categories
+
+```{r}
+kasumi_dir <- file.path(fd, "Kasumi-1_cells")
+kasumi_files <- c(list.files(kasumi_dir, full.names = TRUE),
+               file.path(fd, "Dataset_of_EEJs", "Kasumi-1, control cells, EEJs from original RNA-Seq.txt"))
+```
+
+```{r}
+kasumi_df <- readTxt(kasumi_files[[1]])
+
+for (i in 2:length(kasumi_files)) {
+  kasumi_df <- full_join(kasumi_df, 
+                           readTxt(kasumi_files[[i]]), by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"))
+}
+
+kasumi_df[is.na(kasumi_df)] <- 0
+kasumi_df
+```
+
+```{r}
+kasumi_cpm <- get_eej(kasumi_df)
+write.table(kasumi_cpm, file = file.path(fd, "EEJ_Kasumi_filtered_CPM-1.txt"), sep = '\t')
+
+kasumi_raw <- get_eej(kasumi_df, use_raw = TRUE)
+write.table(kasumi_cpm, file = file.path(fd, "EEJ_Kasumi_filtered_raw10.txt"), sep = '\t')
+
+common <- (kasumi_cpm$eej_id %in% kasumi_raw$eej_id)  
+kasumi_dc <- kasumi_cpm[common,]
+write.table(kasumi_dc, file = file.path(fd, "EEJ_Kasumi_filtered_DC.txt"), sep = '\t')
+```
+
+```{r}
+ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
+ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
+file <- FaFile(ref_path, index=ref_idx_path)
+fasta <- open(file)
+
+
+kasumi_dc$seqnames <- gsub("chr", "", kasumi_dc$seqnames)
+kasumi_dc_short <- cbind(kasumi_dc[,1:8], sum_samples = kasumi_dc$sum_samples)
+kasumi_dc_ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=kasumi_dc_short)
+
+ss <- c(rep(5, length(kasumi_dc_ss_coords$fiveSSs)),
+        rep(3, length(kasumi_dc_ss_coords$threeSSs)))
+
+kasumi_dc_ss_coords_df <- rbind(as.data.frame(kasumi_dc_ss_coords$fiveSSs), 
+                                as.data.frame(kasumi_dc_ss_coords$threeSSs))
+
+kasumi_dc_ss_coords_df$ss <- ss
+kasumi_dc_ss_coords_df$ss_start <- kasumi_dc_ss_coords_df$start
+kasumi_dc_ss_coords_df$ss_end <- kasumi_dc_ss_coords_df$end
+
+kasumi_dc_ss_coords_df <- add_refseqs(fasta, kasumi_dc_ss_coords_df, source="EEJ")
+write.table(kasumi_dc_ss_coords_df, file = file.path(fd, "EEJ_Kasumi_filtered_DC_with_refseqs.txt"), sep = '\t')
+```
+

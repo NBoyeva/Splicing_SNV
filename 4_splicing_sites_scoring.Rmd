@@ -1,0 +1,374 @@
+---
+title: "Splice SItes Scoring"
+author: "Nadzeya Boyeva"
+date: "2024-11-29"
+output: pdf_document
+---
+
+# Start
+
+```{r}
+library(ggseqlogo)
+library(ggplot2)
+library(dplyr)
+```
+
+
+```{r}
+introns <- readTxt(file.path(fd, "introns_nas_common.txt"))
+eejs <- readTxt(file.path(fd, "dc_eej_nas_common.txt"))
+eejs_2 <- readTxt(file.path(fd, "dc_eej_nas_common_2.txt"))
+```
+
+# EEJs
+
+```{r}
+dinucs <- eejs %>%
+  mutate(
+    conservative = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    )
+  )
+
+# Calculate statistics for "5" splice sites
+stats_5 <- dinucs %>%
+  filter(ss == "5") %>%
+  count(conservative) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Calculate statistics for "3" splice sites
+stats_3 <- dinucs %>%
+  filter(ss == "3") %>%
+  count(conservative) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Print the statistics
+print("Statistics for 5' splice sites:")
+print(stats_5)
+
+print("Statistics for 3' splice sites:")
+print(stats_3)
+
+# Create sequence logos
+# Filter sequences for "5" and "3" splice sites
+sequences_5 <- dinucs %>% filter(ss == "5") %>% pull(refseq)
+sequences_3 <- dinucs %>% filter(ss == "3") %>% pull(refseq)
+```
+
+```{r}
+# Sequence logo for "5" splice site
+ggseqlogo(sequences_5, method = "probability") +
+  labs(title = "5' Splice Site Sequence Logo")
+
+# Sequence logo for "3" splice site
+ggseqlogo(sequences_3, method = "probability") +
+  labs(title = "3' Splice Site Sequence Logo")
+```
+
+```{r}
+# Histogram for 5' splice site statistics
+ggplot(stats_5, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 5' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+
+# Histogram for 3' splice site statistics
+ggplot(stats_3, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 3' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+bed <- eejs[c("seqnames", "ss_start", "ss_end", "strand")]
+colnames(bed) <- c('chrom', 'start', 'end', 'strand')
+bed2 <- GenomicRanges::makeGRangesFromDataFrame(bed)
+bed3 <- rtracklayer::export(bed2, format="bed", ignore.strand = TRUE)
+write.table(bed3, "eejs_common.bed", sep="\t", col.names=FALSE, row.names = FALSE)
+```
+
+Get total number of reads
+
+```{r}
+eejs <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
+eejs_total_counts <- eejs[c("eej_id", "sum_samples")]
+write.table(eejs_total_counts, file.path(fd, "eejs_total_counts.txt"), sep="\t", row.names = FALSE)
+rm(eejs)
+```
+
+```{r}
+plot(density(log10(eejs_total_counts$sum_samples)))
+```
+
+```{r}
+plot(density(log10(eejs_sample_counts$sum_samples)))
+```
+
+
+```{r}
+eejs_total_counts$log_sum_samples <- log10(eejs_total_counts$sum_samples)
+eejs_total_counts$log_sum_category <- ceiling(eejs_total_counts$log_sum_samples)
+eejs$log_sum_category <- eejs_total_counts[eejs_total_counts$eej_id == eejs$eej_id]
+eejs <- eejs %>% left_join(eejs_total_counts, by = "eej_id")
+eejs
+```
+
+```{r}
+# Calculate percentages
+dinuc_percentages <- dinucs %>%
+  group_by(log_sum_category) %>%
+  mutate(total_rows = n()) %>% # Count total rows per log_sum_category
+  group_by(log_sum_category, ss, conservative) %>%
+  summarise(
+    count = n(),
+    total_rows = first(total_rows), # Total rows for each log_sum_category
+    percent = 100 * count / total_rows,
+    .groups = "drop"
+  ) %>%
+  filter((ss == "5" & conservative %in% c("GT", "GC")) | (ss == "3" & conservative == "AG"))
+
+# Plot the results
+ggplot(dinuc_percentages, aes(x = log_sum_category, y = percent, fill = conservative)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ss, labeller = labeller(ss = c("5" = "5' ss", "3" = "3' ss"))) +
+  labs(
+    title = "Percentage of GT/GC (5' ss) and AG (3' ss) by log_sum_category",
+    x = "log_sum_category",
+    y = "Percentage of Total Rows",
+    fill = "Dinucleotide"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+# Calculate percentages and total rows
+dinuc_percentages <- dinucs %>%
+  group_by(log_sum_category) %>%
+  mutate(total_rows = n()) %>% # Count total rows per log_sum_category
+  group_by(log_sum_category, ss, conservative) %>%
+  summarise(
+    count = n(),
+    total_rows = first(total_rows), # Total rows for each log_sum_category
+    percent = 100 * count / total_rows,
+    .groups = "drop"
+  ) %>%
+  filter((ss == "5" & conservative %in% c("GT", "GC")) | (ss == "3" & conservative == "AG"))
+
+# Total row counts for annotation
+category_totals <- dinucs %>%
+  group_by(log_sum_category) %>%
+  summarise(total_rows = n(), .groups = "drop")
+
+# Plot with row count annotations
+ggplot(dinuc_percentages, aes(x = log_sum_category, y = percent, fill = conservative)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(
+    data = category_totals,
+    aes(x = log_sum_category, y = 100, label = total_rows), # Place labels above bars
+    inherit.aes = FALSE,
+    vjust = -0.5, size = 3
+  ) +
+  facet_wrap(~ss, labeller = labeller(ss = c("5" = "5' ss", "3" = "3' ss"))) +
+  labs(
+    title = "Percentage of GT/GC (5' ss) and AG (3' ss) by log_sum_category",
+    x = "log_sum_category",
+    y = "Percentage of Total Rows",
+    fill = "Dinucleotide"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(dinuc_percentages, aes(x = as.factor(log_sum_category), y = percent, fill = conservative)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(
+    data = category_totals,
+    aes(x = as.factor(log_sum_category), y = 100, label = total_rows), # Place labels above bars
+    inherit.aes = FALSE,
+    vjust = -0.5, size = 3
+  ) +
+  facet_wrap(~ss, labeller = labeller(ss = c("5" = "5' ss", "3" = "3' ss"))) +
+  scale_x_discrete(
+    expand = c(0.1, 0.1) # Ensures labels fit within the plot margins
+  ) +
+  labs(
+    title = "Percentage of GT/GC (5' ss) and AG (3' ss) by EEJ counts (log10)",
+    x = "log_sum_category",
+    y = "Percentage of Total Rows",
+    fill = "Dinucleotide"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1) # Rotate labels for readability
+  )
+```
+
+```{r}
+dinucs <- eejs %>%
+  mutate(
+    ref_dinucl = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    ),
+    alt_dinucl = case_when(
+      ss == "5" ~ substr(altseq, 4, 5),
+      ss == "3" ~ substr(altseq, 19, 20)
+    )
+  )
+dinucs
+```
+
+# EEJS, sample counts
+
+```{r}
+#eejs <- readTxt(file.path(fd, "EEJ_filtered_DC_recalc.txt")) #ss_df
+eejs <- ss_df
+eejs_sample_counts <- eejs[c("eej_id", "sum_samples")]
+write.table(eejs_sample_counts, file.path(fd, "eejs_sample_counts.txt"), sep="\t", row.names = FALSE)
+#rm(eejs)
+eejs_2
+```
+
+
+```{r}
+eejs_2$log_sum_samples <- log10(eejs_2$sum_samples + 0.5)
+eejs_2$log_sum_category <- ceiling(eejs_2$log_sum_samples)
+eejs_2$sum_samples_bins <- cut(eejs_2$sum_samples, 
+                               breaks = c(0, 1, 10, 50, 100, 200, 300, 400, 450), 
+                               include.lowest = TRUE)
+eejs_2
+```
+
+```{r}
+dinucs <- eejs_2 %>%
+  mutate(
+    conservative = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    )
+  )
+```
+
+
+```{r}
+# Calculate percentages
+dinuc_percentages <- dinucs %>%
+  group_by(sum_samples_bins) %>%
+  mutate(total_rows = n()) %>% # Count total rows per log_sum_category
+  group_by(sum_samples_bins, ss, conservative) %>%
+  summarise(
+    count = n(),
+    total_rows = first(total_rows), # Total rows for each log_sum_category
+    percent = 100 * count / total_rows,
+    .groups = "drop"
+  ) %>%
+  filter((ss == "5" & conservative %in% c("GT", "GC")) | (ss == "3" & conservative == "AG"))
+```
+
+```{r}
+# Convert to appropriate types
+dinuc_percentages$conservative <- as.factor(dinuc_percentages$conservative)
+dinuc_percentages$sum_samples_bins <- as.factor(dinuc_percentages$sum_samples_bins)
+dinuc_percentages$ss <- factor(dinuc_percentages$ss, levels = c(3, 5), labels = c("3' ss", "5' ss"))
+
+# Plot
+ggplot(dinuc_percentages, aes(x = sum_samples_bins, y = percent, fill = conservative)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ss) +
+  labs(
+    title = "Percentage of GT/GC (5' ss) and AG (3' ss) by log_sum_category",
+    x = "Number of samples supporting this EEJ",
+    y = "Percentage of Total Rows",
+    fill = "Dinucleotide"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Total row counts for annotation
+category_totals <- dinucs %>%
+  group_by(sum_samples_bins) %>%
+  summarise(total_rows = n(), .groups = "drop")
+
+ggplot(dinuc_percentages, aes(x = sum_samples_bins, y = percent, fill = conservative)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(
+    data = category_totals,
+    aes(x = sum_samples_bins, y = 100, label = total_rows), # Place labels above bars
+    inherit.aes = FALSE,
+    vjust = -0.5, size = 3
+  ) +
+  facet_wrap(~ss) +
+  labs(
+    title = "Percentage of GT/GC (5' ss) and AG (3' ss) ",
+    x = "Number of samples supporting this EEJ",
+    y = "Percentage of Total Rows",
+    fill = "Dinucleotide"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Kasumi EEJs
+
+```{r}
+eejs <- kasumi_dc_ss_coords_df
+dinucs <- eejs %>%
+  mutate(
+    conservative = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    )
+  )
+
+# Calculate statistics for "5" splice sites
+stats_5 <- dinucs %>%
+  filter(ss == "5") %>%
+  count(conservative) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Calculate statistics for "3" splice sites
+stats_3 <- dinucs %>%
+  filter(ss == "3") %>%
+  count(conservative) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Print the statistics
+print("Statistics for 5' splice sites:")
+print(stats_5)
+
+print("Statistics for 3' splice sites:")
+print(stats_3)
+
+# Create sequence logos
+# Filter sequences for "5" and "3" splice sites
+sequences_5 <- dinucs %>% filter(ss == "5") %>% pull(refseq)
+sequences_3 <- dinucs %>% filter(ss == "3") %>% pull(refseq)
+```
+
+```{r}
+col_scheme <- make_col_scheme(chars = c("A", "C", "G", "T"),
+                              groups = c("A", "C", "G", "T"),
+                              cols = c("#E41A1C", "#377EB8", "#4DAF4A", "#FF7F00")) # Adjust colors as needed
+
+# Generate sequence logo with custom colors
+ggseqlogo(sequences_5, method = "probability", col_scheme = col_scheme) +
+  labs(title = "5' Splice Site Sequence Logo")
+
+# Sequence logo for "3" splice site
+ggseqlogo(sequences_3, method = "probability", col_scheme = col_scheme) +
+  labs(title = "3' Splice Site Sequence Logo")
+```
+
+
