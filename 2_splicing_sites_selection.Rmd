@@ -8,14 +8,14 @@ output: pdf_document
 ```{r}
 library(dplyr)
 library(edgeR)
-source("/home/nadzeya/Documents/GitHub/Splicing_SNV/2_splicing_sites_selection_functions.R")
+source("/media/user5/new/boyeva/r/2_splicing_sites_selection_functions.R")
 ```
 
 
 # Sites from EEJ gene related matrices
 
 ```{r}
-fd <- '/home/nadzeya/praktika/'
+fd116 <- '/media/user5/new/boyeva'
 
 readTxt <- function(path) {
   read.table(file=path, 
@@ -27,54 +27,69 @@ readTxt <- function(path) {
 ```
 
 ```{r}
-eej_dataset_dir <- file.path(fd, "Dataset_of_EEJs")
+eej_dataset_dir <- file.path(fd116, "Dataset_of_EEJs")
 all_files <- list.files(eej_dataset_dir, full.names = TRUE)
 combined_df <- readTxt(all_files[[1]])
 
 for (i in 2:length(all_files)) {
   combined_df <- full_join(combined_df, 
-                           all_files[[i]], by = c("eej_id", "gene_id", "seqnames", "start", "end", "strand"))
+                           readTxt(all_files[[i]]), by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"), copy=TRUE)
 }
 
-str(combined_df)
+combined_df[is.na(combined_df)] <- 0
+
+nrow(combined_df)
+ncol(combined_df)
+colnames(combined_df)[1:10]
 ```
 
 ```{r}
-raw_eejs <- get_eej(combined_df, use_raw)
+filtered_df <- filter_eej_df(combined_df,
+                              use_raw=TRUE,
+                              use_cpm=TRUE,
+                              raw_threshold=10, 
+                              cpm_threshold=-1,
+                              n_samples_threshold=1)
+
+filtered_df$mean_raw <- filtered_df$sum_raw / filtered_df$sum_samples_raw
+filtered_df$mean_cpm <- filtered_df$sum_cpm / filtered_df$sum_samples_cpm
+
+write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm-1_s1.txt"), sep = '\t')
+str(filtered_df)
+```
+
+
+```{r}
+filtered_df <- filter_eej_df(combined_df,
+                              use_raw=TRUE,
+                              use_cpm=TRUE,
+                              raw_threshold=10, 
+                              cpm_threshold=0,
+                              n_samples_threshold=1)
+
+filtered_df$mean_raw <- filtered_df$sum_raw / filtered_df$sum_samples_raw
+filtered_df$mean_cpm <- filtered_df$sum_cpm / filtered_df$sum_samples_cpm
+
+write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm0_s1.txt"), sep = '\t')
+nrow(filtered_df)
 ```
 
 ```{r}
-ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
-mean(ss_df$sum_samples)
-min(ss_df$sum_samples)
-ncol(ss_df)
-ss_df$sum_samples[1]
-ss_df[1, !(colnames(ss_df) %in% 
-                                    c("eej_id", "gene_id", "seqnames", 
-                                    "start", "end", "width", "strand", 
-                                    "intron_length", "sum_samples"))]
+filtered_df <- filter_eej_df(combined_df,
+                              use_raw=TRUE,
+                              use_cpm=TRUE,
+                              raw_threshold=10, 
+                              cpm_threshold=0,
+                              n_samples_threshold=3)
 
-ss_df$sum_samples_2 <- rowSums(ss_df[, !(colnames(ss_df) %in% 
-                                    c("eej_id", "gene_id", "seqnames", 
-                                    "start", "end", "width", "strand", 
-                                    "intron_length", "sum_samples"))])
+filtered_df$mean_raw <- filtered_df$sum_raw / filtered_df$sum_samples_raw
+filtered_df$mean_cpm <- filtered_df$sum_cpm / filtered_df$sum_samples_cpm
 
-mean(ss_df$sum_samples_2)
-max(ss_df$sum_samples_2)
-mean(ss_df$sum_samples_2 > 1)
-plot(density(log10(ss_df$sum_samples_2)))
-
-ss_df$sum_samples_ratio <- ss_df$sum_samples_2 / 443
-write.table(ss_df, file=file.path(fd, "EEJ_filtered_DC_recalc.txt"), sep='\t')
-
-ss_df_300samples <- ss_df[ss_df$sum_samples_2 > 300,]
-write.table(ss_df_300samples, file=file.path(fd, "EEJ_filtered_DC_300.txt"), sep='\t')
-
-ss_df_200samples <- ss_df[ss_df$sum_samples_2 > 200,]
-write.table(ss_df_200samples, file=file.path(fd, "EEJ_filtered_DC_200.txt"), sep='\t')
-
-plot(density(ss_df_300samples$sum_samples_2))
+write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm0_s3.txt"), sep = '\t')
+nrow(filtered_df)
 ```
+
+
 
 # Setecting sites within categories
 
@@ -107,6 +122,8 @@ common <- (kasumi_cpm$eej_id %in% kasumi_raw$eej_id)
 kasumi_dc <- kasumi_cpm[common,]
 write.table(kasumi_dc, file = file.path(fd, "EEJ_Kasumi_filtered_DC.txt"), sep = '\t')
 ```
+
+# Logos
 
 ```{r}
 ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
