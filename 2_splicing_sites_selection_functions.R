@@ -15,18 +15,16 @@ filter_eej_cols <- function(df,
                             raw_threshold=10, 
                             cpm_threshold=-1) {
   
-  # This function applies filter_eej_v() to all columns in the dataframe given
-  
   if (use_raw) {
     sum_vector <- get_sum_vector(df)
-    df_filtered <- as.data.frame(lapply(df, 
+    df_filtered <- as.data.frame(apply(df, 2,
                                         function(x) { return(as.integer(x >= raw_threshold)) }))
   } else {
     df_filtered <- as.data.frame(lapply(df, 
                                         cpm, log=TRUE, prior.count=0.5))
     sum_vector <- get_sum_vector(df_filtered)
     df_filtered <- as.data.frame(lapply(df, 
-                                        function(x) { return(as.integer(x >= raw_threshold)) }))
+                                        function(x) { return(as.integer(x >= cpm_threshold)) }))
   }
   
   return(list(df_filtered, sum_vector))
@@ -35,14 +33,11 @@ filter_eej_cols <- function(df,
 
 
 filter_eej_df <- function(full_df,
-                          use_raw=FALSE,
-                          use_cpm=FALSE,
+                          use_raw=TRUE,
+                          use_cpm=TRUE,
                           raw_threshold=10, 
-                          cpm_threshold=-1, 
-                          calculate_cpm_threshold=FALSE,
+                          cpm_threshold=-1,
                           n_samples_threshold=1) {
-  
-  # This function applies filter_eej_cols() to initial file
   
   meta_df <- full_df[, colnames(full_df) %in% 
                        c("eej_id", "gene_id", "seqnames", 
@@ -61,7 +56,7 @@ filter_eej_df <- function(full_df,
 
     list_filter <- filter_eej_cols(matrix_df,
                                  use_raw=TRUE,
-                                 raw_threshold)
+                                 raw_threshold=raw_threshold)
     meta_df$sum_raw <- list_filter[[2]]
     meta_df$sum_samples_raw <- get_sum_vector(list_filter[[1]])
     filter_vector <- meta_df$sum_samples_raw >= n_samples_threshold
@@ -72,7 +67,7 @@ filter_eej_df <- function(full_df,
   if (use_cpm) {
     list_filter <- filter_eej_cols(matrix_df,
                                  use_raw=FALSE,
-                                 cpm_threshold)
+                                 cpm_threshold=cpm_threshold)
     meta_df$sum_cpm <- list_filter[[2]]
     meta_df$sum_samples_cpm <- get_sum_vector(list_filter[[1]])
     filter_vector <- meta_df$sum_samples_cpm >= n_samples_threshold
