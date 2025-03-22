@@ -1,15 +1,15 @@
 get_SS_from_EEJ <- function(read_from_file=TRUE, filepath=NULL, df=NULL){
   
   if (read_from_file) {
-    EEJs <- read.table(file=filepath,
+    df <- read.table(file=filepath,
                        sep="\t",
                        header=TRUE,
                        quote="\"",
                        as.is=TRUE)
-  } else {
-    EEJs <- makeGRangesFromDataFrame(df=df,
+  } 
+  
+  EEJs <- makeGRangesFromDataFrame(df=df,
                                      keep.extra.columns=TRUE)
-  }
   
   # Convert genomic coordinates of exon-exon junctions
   #   in genomic coordinates of splice sites.
