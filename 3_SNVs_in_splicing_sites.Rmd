@@ -49,11 +49,10 @@ nas_common <- nas_merged[nas_merged@ranges@NAMES %in%
 Load filtered EEJ dataset. DC is for double-checked: each EEJ has read count \>=10 and log10CPM \>=-1 at least in one experiment. Unify chromosome notation. Selects metadata EEJ columns. Extract SSs coordinates from EEJ coordinates.
 
 ```{r}
-ss_df <- readTxt(file.path(fd, "EEJ_filtered_DC.txt"))
+ss_df <- readTxt(file.path(fd, "EEJ_raw10_cpm0_s1.txt"))
 ss_df$seqnames <- gsub("chr", "", ss_df$seqnames)
-ss_df_short <- ss_df[,1:8] # EEJ metadata
-ss_df_short_2 <- cbind(ss_df[,1:8], sum_samples = ss_df$sum_samples_2)
-ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=ss_df_short_2)
+ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=ss_df)
+ggseqlogo(data.frame(getSeq(x=fasta, ss_coords[[1]])))
 ```
 
 Find SNVs overlapping with SSs.
