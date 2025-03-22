@@ -8,9 +8,12 @@ output: pdf_document
 ```{r}
 library(dplyr)
 library(edgeR)
-source("/media/user5/new/boyeva/r/2_splicing_sites_selection_functions.R")
+library(Rsamtools)
+library(ggplot2)
+library(ggseqlogo)
+source("3_SNVs_in_splicing_sites_functions.R")
+#source("/media/user5/new/boyeva/r/2_splicing_sites_selection_functions.R")
 ```
-
 
 # Sites from EEJ gene related matrices
 
@@ -58,7 +61,6 @@ write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm-1_s1.txt"), sep 
 str(filtered_df)
 ```
 
-
 ```{r}
 filtered_df <- filter_eej_df(combined_df,
                               use_raw=TRUE,
@@ -88,8 +90,6 @@ filtered_df$mean_cpm <- filtered_df$sum_cpm / filtered_df$sum_samples_cpm
 write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm0_s3.txt"), sep = '\t')
 nrow(filtered_df)
 ```
-
-
 
 # Setecting sites within categories
 
@@ -123,8 +123,6 @@ kasumi_dc <- kasumi_cpm[common,]
 write.table(kasumi_dc, file = file.path(fd, "EEJ_Kasumi_filtered_DC.txt"), sep = '\t')
 ```
 
-# Logos
-
 ```{r}
 ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
 ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
@@ -150,3 +148,46 @@ kasumi_dc_ss_coords_df <- add_refseqs(fasta, kasumi_dc_ss_coords_df, source="EEJ
 write.table(kasumi_dc_ss_coords_df, file = file.path(fd, "EEJ_Kasumi_filtered_DC_with_refseqs.txt"), sep = '\t')
 ```
 
+# Logos
+
+```{r}
+input <- "RUNX1-RUNX1T1 project, EEJs from Kasumi-1 cells, genes-related matrix.txt"
+
+ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
+ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
+file <- FaFile(ref_path, index=ref_idx_path)
+fasta <- open(file)
+
+add_refseqs_plot_logo <- function(filepath, ref_genome) {
+  res <- get_SS_from_EEJ(read_from_file=TRUE, filepath)
+  res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
+  res$fiveSSs$refseqs <- getSeq(x=ref_genome, res[[1]])
+  ggplot() + geom_logo(res$fiveSSs$refseqs) + theme_logo()
+  
+  res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
+  res$threeSSs$refseqs <- getSeq(x=ref_genome, res[[1]])
+  ggplot() + geom_logo(res$threeSSs$refseqs) + theme_logo()
+}
+add_refseqs_plot_logo(file.path(fd, "Kasumi-1_cells", input), fasta)
+```
+
+```{r}
+input <- "EEJ_raw10_cpm0_s3.txt"
+
+ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
+ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
+file <- FaFile(ref_path, index=ref_idx_path)
+fasta <- open(file)
+
+
+res <- get_SS_from_EEJ(read_from_file=TRUE, file.path(fd, input))
+res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
+x1 <- getSeq(x=fasta, res[[1]])
+ggseqlogo(data.frame(x1))
+```
+
+```{r}
+res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
+x2 <- getSeq(x=fasta, res[[2]])
+ggplot() + geom_logo(data.frame(x2)) + theme_logo()
+```
