@@ -5,7 +5,7 @@ date: "2024-11-05"
 output: pdf_document
 ---
 
-```{r}
+```{r include=FALSE}
 library(dplyr)
 library(edgeR)
 library(Rsamtools)
@@ -18,6 +18,7 @@ source("3_SNVs_in_splicing_sites_functions.R")
 # Sites from EEJ gene related matrices
 
 ```{r}
+fd <- '/home/nadzeya/praktika'
 fd116 <- '/media/user5/new/boyeva'
 
 readTxt <- function(path) {
@@ -29,6 +30,8 @@ readTxt <- function(path) {
 }
 ```
 
+EEJ gene related matrices contain information about exon-exon junctions which is inferred from RNAseq reads mapping gaps. Rows of every matrix of this kind are individual EEJs, and columns are samples. To create a set of EEJs, where splicing actually occurs in Kasumi-1 cells, we need to combine all the EEJ counts from all the samples:
+
 ```{r}
 eej_dataset_dir <- file.path(fd116, "Dataset_of_EEJs")
 all_files <- list.files(eej_dataset_dir, full.names = TRUE)
@@ -36,7 +39,13 @@ combined_df <- readTxt(all_files[[1]])
 
 for (i in 2:length(all_files)) {
   combined_df <- full_join(combined_df, 
-                           readTxt(all_files[[i]]), by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"), copy=TRUE)
+                           readTxt(all_files[[i]]), by = c("eej_id", 
+                                                           "gene_id", 
+                                                           "seqnames", 
+                                                           "start", 
+                                                           "end", 
+                                                           "width", 
+                                                           "strand"), copy=TRUE)
 }
 
 combined_df[is.na(combined_df)] <- 0
@@ -45,6 +54,8 @@ nrow(combined_df)
 ncol(combined_df)
 colnames(combined_df)[1:10]
 ```
+
+To keep all potentially active EEJs , firstly, we selected low filtering threshold: an EEJ should have at leat 10 reads supporting it or CPM \>= -1 (0.5 per million reads) at least in one sample.
 
 ```{r}
 filtered_df <- filter_eej_df(combined_df,
@@ -61,6 +72,8 @@ write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm-1_s1.txt"), sep 
 str(filtered_df)
 ```
 
+We repeated filtration with higher CPN threshold:
+
 ```{r}
 filtered_df <- filter_eej_df(combined_df,
                               use_raw=TRUE,
@@ -75,6 +88,8 @@ filtered_df$mean_cpm <- filtered_df$sum_cpm / filtered_df$sum_samples_cpm
 write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm0_s1.txt"), sep = '\t')
 nrow(filtered_df)
 ```
+
+... and with higher supporting samples number threshold:
 
 ```{r}
 filtered_df <- filter_eej_df(combined_df,
@@ -91,103 +106,49 @@ write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm0_s3.txt"), sep =
 nrow(filtered_df)
 ```
 
-# Setecting sites within categories
-
-```{r}
-kasumi_dir <- file.path(fd, "Kasumi-1_cells")
-kasumi_files <- c(list.files(kasumi_dir, full.names = TRUE),
-               file.path(fd, "Dataset_of_EEJs", "Kasumi-1, control cells, EEJs from original RNA-Seq.txt"))
-```
-
-```{r}
-kasumi_df <- readTxt(kasumi_files[[1]])
-
-for (i in 2:length(kasumi_files)) {
-  kasumi_df <- full_join(kasumi_df, 
-                           readTxt(kasumi_files[[i]]), by = c("eej_id", "gene_id", "seqnames", "start", "end", "width", "strand"))
-}
-
-kasumi_df[is.na(kasumi_df)] <- 0
-kasumi_df
-```
-
-```{r}
-kasumi_cpm <- get_eej(kasumi_df)
-write.table(kasumi_cpm, file = file.path(fd, "EEJ_Kasumi_filtered_CPM-1.txt"), sep = '\t')
-
-kasumi_raw <- get_eej(kasumi_df, use_raw = TRUE)
-write.table(kasumi_cpm, file = file.path(fd, "EEJ_Kasumi_filtered_raw10.txt"), sep = '\t')
-
-common <- (kasumi_cpm$eej_id %in% kasumi_raw$eej_id)  
-kasumi_dc <- kasumi_cpm[common,]
-write.table(kasumi_dc, file = file.path(fd, "EEJ_Kasumi_filtered_DC.txt"), sep = '\t')
-```
-
-```{r}
-ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
-ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
-file <- FaFile(ref_path, index=ref_idx_path)
-fasta <- open(file)
-
-
-kasumi_dc$seqnames <- gsub("chr", "", kasumi_dc$seqnames)
-kasumi_dc_short <- cbind(kasumi_dc[,1:8], sum_samples = kasumi_dc$sum_samples)
-kasumi_dc_ss_coords <- get_SS_from_EEJ(read_from_file=FALSE, df=kasumi_dc_short)
-
-ss <- c(rep(5, length(kasumi_dc_ss_coords$fiveSSs)),
-        rep(3, length(kasumi_dc_ss_coords$threeSSs)))
-
-kasumi_dc_ss_coords_df <- rbind(as.data.frame(kasumi_dc_ss_coords$fiveSSs), 
-                                as.data.frame(kasumi_dc_ss_coords$threeSSs))
-
-kasumi_dc_ss_coords_df$ss <- ss
-kasumi_dc_ss_coords_df$ss_start <- kasumi_dc_ss_coords_df$start
-kasumi_dc_ss_coords_df$ss_end <- kasumi_dc_ss_coords_df$end
-
-kasumi_dc_ss_coords_df <- add_refseqs(fasta, kasumi_dc_ss_coords_df, source="EEJ")
-write.table(kasumi_dc_ss_coords_df, file = file.path(fd, "EEJ_Kasumi_filtered_DC_with_refseqs.txt"), sep = '\t')
-```
-
 # Logos
 
-```{r}
-input <- "RUNX1-RUNX1T1 project, EEJs from Kasumi-1 cells, genes-related matrix.txt"
+To explore logos of splicing sites in selected EEJ regions, we import reference genome and extract sequences of splicing sites from it.
 
+```{r}
 ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
 ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
 file <- FaFile(ref_path, index=ref_idx_path)
 fasta <- open(file)
-
-add_refseqs_plot_logo <- function(filepath, ref_genome) {
-  res <- get_SS_from_EEJ(read_from_file=TRUE, filepath)
-  res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
-  res$fiveSSs$refseqs <- getSeq(x=ref_genome, res[[1]])
-  ggplot() + geom_logo(res$fiveSSs$refseqs) + theme_logo()
-  
-  res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
-  res$threeSSs$refseqs <- getSeq(x=ref_genome, res[[1]])
-  ggplot() + geom_logo(res$threeSSs$refseqs) + theme_logo()
-}
-add_refseqs_plot_logo(file.path(fd, "Kasumi-1_cells", input), fasta)
 ```
 
+We can see that GT dinucleotide in 5' SS is not that conservative with lower filtering thresholds.
+
 ```{r}
-input <- "EEJ_raw10_cpm0_s3.txt"
-
-ref_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa")
-ref_idx_path = file.path(fd, "Homo_sapiens.GRCh38.dna_sm.toplevel.fa.fai")
-file <- FaFile(ref_path, index=ref_idx_path)
-fasta <- open(file)
-
+input <- "EEJ_raw10_cpm-1_s1.txt"
 
 res <- get_SS_from_EEJ(read_from_file=TRUE, file.path(fd, input))
 res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
 x1 <- getSeq(x=fasta, res[[1]])
-ggseqlogo(data.frame(x1))
+ggseqlogo(data.frame(x1), seq_type='dna', method='prob')
+```
+
+We see the same situation for 3' SS dinucleotide – normally it should be more conservative.
+
+```{r}
+res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
+x2 <- getSeq(x=fasta, res[[2]])
+ggseqlogo(data.frame(x2), seq_type = 'dna', method='prob')
+```
+
+But if we take higher thresholds, dinucleotides are more conservative here.
+
+```{r}
+input <- "EEJ_raw10_cpm0_s3.txt"
+
+res <- get_SS_from_EEJ(read_from_file=TRUE, file.path(fd, input))
+res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
+x1 <- getSeq(x=fasta, res[[1]])
+ggseqlogo(data.frame(x1), method='prob')
 ```
 
 ```{r}
 res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
 x2 <- getSeq(x=fasta, res[[2]])
-ggplot() + geom_logo(data.frame(x2)) + theme_logo()
+ggseqlogo(data.frame(x2), seq_type = 'dna', method='prob')
 ```
