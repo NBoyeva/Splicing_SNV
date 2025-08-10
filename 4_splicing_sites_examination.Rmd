@@ -1,0 +1,190 @@
+---
+title: "Splice SItes Scoring"
+author: "Nadzeya Boyeva"
+date: "2024-11-29"
+output: pdf_document
+---
+
+```{r}
+library(ggseqlogo)
+library(ggplot2)
+library(dplyr)
+
+readTxt <- function(path) {
+  read.table(file=path, 
+             sep="\t",
+             header=TRUE,
+             quote="\"",
+             as.is=TRUE)
+}
+
+fd <- '/home/nadzeya/praktika'
+```
+
+```{r}
+ucsc <- readTxt(file.path(fd, "ucsc_nas_common.txt"))
+eejs <- readTxt(file.path(fd, "eej_nas_common.txt"))
+```
+
+# SSs from RNA-Seq Derived EEJ Matrices
+
+Select sites with SNVs in conservative dinucleotides:
+
+```{r}
+dinucs <- eejs %>%
+  mutate(
+    conservative = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    ) %>% as.character()
+  )
+```
+
+Calculate stats on conservative dinucleotides:
+
+```{r}
+# Calculate statistics for "5" splice sites
+stats_5 <- dinucs %>%
+  filter(ss == "5") %>%
+  group_by(conservative) %>%
+  summarise(n = n()) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Calculate statistics for "3" splice sites
+stats_3 <- dinucs %>%
+  filter(ss == "3") %>%
+  group_by(conservative) %>%
+  summarise(n = n()) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Print the statistics
+print("Statistics for 5' splice sites:")
+print(stats_5)
+
+print("Statistics for 3' splice sites:")
+print(stats_3)
+
+# Create sequence logos
+# Filter sequences for "5" and "3" splice sites
+sequences_5 <- dinucs %>% filter(ss == "5") %>% pull(refseq)
+sequences_3 <- dinucs %>% filter(ss == "3") %>% pull(refseq)
+```
+
+Plot logos:
+
+```{r}
+ggseqlogo(sequences_5, stack_width = 0.95) +
+  labs(title = "5' SS logo from RNA-Seq data") +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"), 
+    axis.text.x = element_text(size = 16),
+    axis.text.y = element_text(size = 16)  
+  )
+
+ggseqlogo(sequences_3, stack_width = 1) +
+  labs(title = "3' SS logo from RNA-Seq data") +
+    theme(
+    plot.title = element_text(size = 16, face = "bold"),  
+    axis.text.x = element_text(size = 14),          
+    axis.text.y = element_text(size = 16)              
+  )
+```
+
+Plot stats:
+
+```{r}
+ggplot(stats_5, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 5' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+
+ggplot(stats_3, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 3' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+```
+
+# Unique SSs from UCSC Annotation
+
+```{r}
+dinucs <- ucsc %>%
+  mutate(
+    conservative = case_when(
+      ss == "5" ~ substr(refseq, 4, 5),
+      ss == "3" ~ substr(refseq, 19, 20)
+    ) %>% as.character()
+  )
+```
+
+```{r}
+stats_5 <- dinucs %>%
+  filter(ss == "5") %>%
+  group_by(conservative) %>%
+  summarise(n = n()) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Calculate statistics for "3" splice sites
+stats_3 <- dinucs %>%
+  filter(ss == "3") %>%
+  group_by(conservative) %>%
+  summarise(n = n()) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Print the statistics
+print("Statistics for 5' splice sites:")
+print(stats_5)
+
+print("Statistics for 3' splice sites:")
+print(stats_3)
+
+# Create sequence logos
+# Filter sequences for "5" and "3" splice sites
+sequences_5 <- dinucs %>% filter(ss == "5") %>% pull(refseq)
+sequences_3 <- dinucs %>% filter(ss == "3") %>% pull(refseq)
+```
+
+```{r}
+ggseqlogo(sequences_5, stack_width = 0.95) +
+  labs(title = "5' SS logo from RNA-Seq data") +
+  theme(
+    plot.title = element_text(size = 16, face = "bold"), 
+    axis.text.x = element_text(size = 16),
+    axis.text.y = element_text(size = 16)  
+  )
+
+ggseqlogo(sequences_3, stack_width = 1) +
+  labs(title = "3' SS logo from RNA-Seq data") +
+    theme(
+    plot.title = element_text(size = 16, face = "bold"),  
+    axis.text.x = element_text(size = 14),          
+    axis.text.y = element_text(size = 16)              
+  )
+```
+
+```{r}
+ggplot(stats_5, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 5' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+
+ggplot(stats_3, aes(x = conservative, y = percentage)) +
+  geom_bar(stat = "identity", fill = "coral") +
+  labs(
+    title = "Histogram of Conservative Dinucleotides in 3' Splice Sites",
+    x = "Dinucleotide",
+    y = "Percentage"
+  ) +
+  theme_minimal()
+```

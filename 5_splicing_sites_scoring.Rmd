@@ -4,15 +4,26 @@ author: "Nadzeya Boyeva"
 date: "2025-02-24"
 output: pdf_document
 ---
-```{r}
+
+```{r include=FALSE}
 library(VarCon)
 library(dplyr)
+library(ggplot2)
+
+readTxt <- function(path) {
+  read.table(file=path, 
+             sep="\t",
+             header=TRUE,
+             quote="\"",
+             as.is=TRUE)
+}
+
+fd <- '/home/nadzeya/praktika'
 ```
 
 ```{r}
-eejs <- readTxt(file.path(fd, "dc_eej_nas_common.txt"))
-introns <- readTxt(file.path(fd, "introns_nas_common.txt"))
-eejs
+eejs <- readTxt(file.path(fd, "eej_nas_common.txt"))
+ucsc <- readTxt(file.path(fd, "ucsc_nas_common.txt"))
 ```
 
 ```{r}
@@ -23,6 +34,172 @@ add_scores <- function(df) {
 }
 
 eejs <- add_scores(eejs)
-introns <- add_scores(introns)
+ucsc <- add_scores(ucsc)
+eejs$score_diff <- abs(as.numeric(eejs$ref_score) - as.numeric(eejs$alt_score))
+ucsc$score_diff <- abs(as.numeric(ucsc$ref_score) - as.numeric(ucsc$alt_score))
+```
 
+Save SSs data annotated with scores with and without SNV:
+
+```{r}
+write.table(eejs, file.path(fd, "eejs_nas_wscores.txt"), sep="\t", row.names = FALSE)
+write.table(ucsc, file.path(fd, "ucsc_nas_wscores.txt"), sep="\t", row.names = FALSE)
+```
+
+Re-read the data if needed:
+
+```{r}
+eejs <- readTxt(file.path(fd, "eejs_nas_wscores.txt"))
+ucsc <- readTxt(file.path(fd, "ucsc_nas_wscores.txt"))
+```
+
+# SSs from RNA-Seq Derived EEJ Matrices
+
+```{r}
+eejs
+```
+
+```{r}
+eejs_dinucl <- eejs[(eejs$ss == 5 & (eejs$snp_pos_in_ss == 4 | eejs$snp_pos_in_ss == 5)) |
+                      (eejs$ss == 3 & (eejs$snp_pos_in_ss == 19 | eejs$snp_pos_in_ss == 20)),]
+```
+
+```{r}
+ggplot(eejs, aes(x = as.numeric(ref_score), 
+                y = as.numeric(alt_score), 
+                color = abs(as.numeric(alt_score) - as.numeric(ref_score)))) + 
+  geom_point(alpha = 0.8) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  scale_x_continuous(breaks = seq(-50, 20, by = 10))  +
+  scale_y_continuous(breaks = seq(-50, 20, by = 10)) + 
+  labs(title = "Splice Site Score Changes", 
+       x = "Reference Score", 
+       y = "Alternate Score") +
+  guides(color = guide_legend(title = "Score Difference"))
+```
+
+```{r}
+eejs_5ss <- eejs[eejs$ss == 5,]
+
+ss5_counts <- eejs_5ss %>%
+  group_by(snp_pos_in_ss) %>%
+  summarise(n = n())
+
+eejs_5ss <- eejs_5ss %>%
+  mutate(box_color = case_when(
+    snp_pos_in_ss %in% c(3, 4) ~ "highlight",
+    TRUE ~ "normal"
+  ))
+
+ss5_labels <- c("-3", "-2", "-1", "0", "0", "+1", "+2", "+3", "+4")
+
+ggplot(eejs_5ss, aes(x = factor(snp_pos_in_ss), y = score_diff)) +
+  geom_jitter(aes(color = box_color), width = 0.2, alpha = 0.4) +
+  geom_boxplot(aes(fill = box_color), outlier.shape = NA, alpha = 0.7) +
+  geom_text(data = ss5_counts, 
+            aes(x = factor(snp_pos_in_ss), y = max(eejs_5ss$score_diff, na.rm = TRUE) * 1.1, 
+            label = paste0("n=", ss5_counts$n)), 
+            vjust = -0.5, size = 6) +
+  scale_color_manual(values = c("highlight" = "red", "normal" = "royalblue")) +
+  scale_fill_manual(values = c("highlight" = "darkorange", "normal" = "lightgray")) +
+  scale_x_discrete(labels = ss5_labels) +
+  labs(title = "SNV Impact on 5' SS",
+       x = "SNV position relative to dinucleotide",
+       y = "SS strength change") +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(size = 16, angle = 0, hjust = 0.5),
+    axis.text.y = element_text(size = 16),
+    axis.title.x = element_text(size = 16, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 16, margin = margin(r = 10)),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
+```
+
+```{r}
+eejs_3ss <- eejs[eejs$ss == 3,]
+
+ss3_counts <- eejs_3ss %>%
+  group_by(snp_pos_in_ss) %>%
+  summarise(n = n())
+
+eejs_3ss <- eejs_3ss %>%
+  mutate(box_color = case_when(
+    snp_pos_in_ss %in% c(18, 19) ~ "highlight",
+    TRUE ~ "normal"
+  ))
+
+ss3_labels <- c("-18", "-17", "-16", "-15", "-14", "-13", "-12", "-11", "-10", "-9", 
+                "-8", "-7", "-6", "-5", "-4", "-3", "-2", "-1", 
+                "0", "0", "+1", "+2", "+3")
+
+ggplot(eejs_3ss, aes(x = factor(snp_pos_in_ss), y = score_diff)) +
+  geom_jitter(aes(color = box_color), width = 0.2, alpha = 0.4) +
+  geom_boxplot(aes(fill = box_color), outlier.shape = NA, alpha = 0.7) +
+  geom_text(data = ss3_counts, 
+            aes(x = factor(snp_pos_in_ss), y = max(eejs_3ss$score_diff, na.rm = TRUE) * 1.1, 
+            label = n), 
+            vjust = -0.5, size = 4) +
+  scale_color_manual(values = c("highlight" = "red", "normal" = "royalblue")) +
+  scale_fill_manual(values = c("highlight" = "darkorange", "normal" = "lightgray")) +
+  scale_x_discrete(labels = ss3_labels) +
+  labs(title = "SNV Impact on 3' SS",
+       x = "SNV position relative to dinucleotide",
+       y = "SS strength change") +
+  theme_minimal(base_size = 16) +
+  theme(
+    axis.text.x = element_text(size = 13, angle = 0, hjust = 0.5),
+    axis.text.y = element_text(size = 13),
+    axis.title.x = element_text(size = 16, margin = margin(t = 10)),
+    axis.title.y = element_text(size = 16, margin = margin(r = 10)),
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),
+    legend.position = "none"
+  ) +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))
+```
+
+```{r}
+eejs$snp_pos_in_ss[(eejs$ss == 3 & eejs$strand == "-")] <- 22 - eejs$snp_pos_in_ss[(eejs$ss == 3 & eejs$strand == "-")]
+eejs$snp_pos_in_ss[(eejs$ss == 5 & eejs$strand == "-")] <- 8 - eejs$snp_pos_in_ss[(eejs$ss == 5 & eejs$strand == "-")]
+```
+
+```{r}
+eejs_dinucl <- eejs[(eejs$ss == 5 & (eejs$snp_pos_in_ss == 3 | eejs$snp_pos_in_ss == 4)) |
+                      (eejs$ss == 3 & (eejs$snp_pos_in_ss == 18 | eejs$snp_pos_in_ss == 19)),]
+nrow(eejs_dinucl)
+nrow(eejs)
+```
+
+```{r}
+expressed_genes <- readTxt(file.path(fd, "RUNX1-RUNX1T1 project, list of expressed genes"))
+expressed_genes
+```
+
+```{r}
+eejs <- eejs %>% 
+  left_join(expressed_genes %>% select(gene_id, gene_symbol, gene_name), 
+            by = "gene_id")
+
+write.table(eejs, file.path(fd, "annotated_eej_nas.txt"), sep="\t", row.names = FALSE)
+```
+
+# Unique SSs from UCSC Annotation
+
+```{r}
+ucsc_dinucl <- ucsc[(ucsc$ss == 5 & (ucsc$snp_pos_in_ss == 3 | ucsc$snp_pos_in_ss == 4)) |
+                      (ucsc$ss == 3 & (ucsc$snp_pos_in_ss == 18 | ucsc$snp_pos_in_ss == 19)),]
+nrow(ucsc_dinucl)
+nrow(ucsc)
+```
+
+```{r}
+ucsc$snp_pos_in_ss[(ucsc$ss == 3 & ucsc$strand == "-")] <- 22 - ucsc$snp_pos_in_ss[(ucsc$ss == 3 & ucsc$strand == "-")]
+ucsc$snp_pos_in_ss[(ucsc$ss == 5 & ucsc$strand == "-")] <- 8 - ucsc$snp_pos_in_ss[(ucsc$ss == 5 & ucsc$strand == "-")]
+ucsc <- ucsc %>% 
+  left_join(expressed_genes %>% select(refseq_id, gene_symbol, gene_name), 
+            by = "refseq_id")
+
+write.table(ucsc, file.path(fd, "annotated_intron_nas.txt"), sep="\t", row.names = FALSE)
 ```

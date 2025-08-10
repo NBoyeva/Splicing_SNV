@@ -11,7 +11,9 @@ output: pdf_document
 library(ggplot2)
 library(VariantAnnotation)
 library(dplyr)
-source("/home/nadzeya/Documents/GitHub/Splicing_SNV/SNV_examination_functions.R")
+library(VennDiagram)
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/1_SNV_examination_functions.R")
+source("/home/nadzeya/Documents/GitHub/Splicing_SNV/venn_plot_functions.R")
 
 readTxt <- function(path) {
   read.table(file=path, 
@@ -22,7 +24,7 @@ readTxt <- function(path) {
 }
 ```
 
-Import VCF files: gen_vcf1 – VCF retrieved from genomic data, sample 1; gen_vcf2 – VCF retrieved from genomic data, sample 2; gen_merged_vcf – genomic data, sample 1 and 2 merged on alignment step; nas_vcf1 – nascent RNA data, sample 1; nas_vcf2 – nascent RNA data, sample 2; nas_vcf3 – nascent RNA data, sample 3; nas_vcf_merged – nascent RNA data, sample 1, 2 and 3 merged on alignment step.
+Import VCF files: gen_vcf1 – VCF retrieved from genomic data, sample 1; gen_vcf2 – VCF retrieved from genomic data, sample 2; gen_merged_vcf – genomic data, sample 1 and 2 merged on alignment step; nas_vcf1 – nascent RNA data, sample 1; nas_vcf2 – nascent RNA data, sample 2; nas_vcf3 – nascent RNA data, sample 3; nas_vcf_merged – nascent RNA data, sample 1, 2 and 3 merged after mapping step.
 
 ```{r}
 fd <- '/home/nadzeya/praktika/'
@@ -120,14 +122,14 @@ nas_merged_uf <- load_vcf(nas_merged_vcf_path, hardfilter=FALSE)
 
 gen1 <- load_vcf(gen_vcf1_path)
 gen2 <- load_vcf(gen_vcf2_path)
-gen_merged <- load_vcf(gen_merged_vcf_path)
-nas1 <- load_vcf(nas_vcf1_path)
-nas2 <- load_vcf(nas_vcf2_path)
-nas3 <- load_vcf(nas_vcf3_path)
-nas_merged <- load_vcf(nas_merged_vcf_path)
+gen_merged <- load_vcf(gen_merged_vcf_path, stats=TRUE)
+nas1 <- load_vcf(nas_vcf1_path, stats=TRUE)
+nas2 <- load_vcf(nas_vcf2_path, stats=TRUE)
+nas3 <- load_vcf(nas_vcf3_path, stats=TRUE)
+nas_merged <- load_vcf(nas_merged_vcf_path, stats=TRUE)
 ```
 
-## Genomic SNVs
+## SNVs from Genomic Data
 
 ```{r echo=TRUE}
 plot_venn_4sets(data_list=list(gen1_uf, 
@@ -139,7 +141,7 @@ plot_venn_4sets(data_list=list(gen1_uf,
                      "Sample 1, filtered",
                      "Sample 2, unfiltered",
                      "Sample 2, filtered"), 
-            title="Genomic SNV intersections")
+            title="SNV from genomic data (filtered)")
 ```
 
 ```{r}
@@ -150,10 +152,21 @@ plot_venn_3sets(data_list=list(gen1,
           labels=c("Sample 1",
                    "Sample 2",
                    "Merged samples"), 
-          title="Genomic SNVs intersections")
+          title="SNVs from genomic data (unfiltered)")
 ```
 
-## Nascent SNVs
+```{r}
+plot_venn_3sets(data_list=list(gen1_uf,
+                               gen2_uf,
+                               gen_merged_uf),
+          param='All SNPs', 
+          labels=c("Sample 1",
+                   "Sample 2",
+                   "Merged samples"), 
+          title="SNVs from genomic data (filtered)")
+```
+
+## SNVs from RNA-Seq Data
 
 ```{r}
 plot_venn_4sets(data_list=list(nas1, 
@@ -165,10 +178,23 @@ plot_venn_4sets(data_list=list(nas1,
                    "Sample 2",
                    "Sample 3",
                    "Merged samples"), 
-          title="Nascent RNA SNVs")
+          title="SNV from RNA-Seq data (filtered)")
 ```
 
-## Genomic and nascent SNVs
+```{r}
+plot_venn_4sets(data_list=list(nas1_uf, 
+                               nas2_uf, 
+                               nas3_uf, 
+                               nas_merged_uf),
+          param='All SNPs', 
+          labels=c("Sample 1",
+                   "Sample 2",
+                   "Sample 3",
+                   "Merged samples"), 
+          title="SNV from RNA-Seq data (unfiltered)")
+```
+
+## SNVs from Genomic and RNA-Seq data
 
 Out of 73 thousand SNVs detected in merged genomic data and 627 thousands of SNVs detected in merged nascent RNA data only 12 thousands SNVs are common:
 
@@ -200,10 +226,10 @@ plot_venn_4sets(data_list=list(gen_merged,
                                nas_common),
           param='All SNPs', 
           labels=c("Genomic (merged samples)",
-                   "Genomic (intersection)",
-                   "Nascent (merged samples)",
-                   "Nascent (intersection)"), 
-          title="Genomic and nascent RNA SNVs")
+                   "Genomic (common across samples)",
+                   "RNA-Seq (merged samples)",
+                   "RNA-Seq (common across samples)"), 
+          title="SNV from genomic and RNA-Seq data")
 ```
 
 In case of unfiltered data, this intersection was only 95 SNVs:
@@ -225,11 +251,11 @@ plot_venn_4sets(data_list=list(gen_merged_uf,
                                nas_merged_uf, 
                                nas_common_uf),
           param='All SNPs', 
-          labels=c("Genomic (merged samples)",
-                   "Genomic (intersection)",
-                   "Nascent (merged samples)",
-                   "Nascent (intersection)"), 
-          title="Genomic and nascent RNA SNVs (unfiltered)")
+         labels=c("Genomic (merged samples)",
+                   "Genomic (common across samples)",
+                   "RNA-Seq (merged samples)",
+                   "RNA-Seq (common across samples)"), 
+          title="SNV from genomic and RNA-Seq data (unfiltered)")
 ```
 
 Therefore, SNVs which are common in all nascent RNA VCF files will be used further.
@@ -243,7 +269,7 @@ common_snps <- Reduce(intersect, list(nas1@ranges@NAMES,
 
 # Comparison of unique and intersecting SNVs
 
-Define subsets of SNVs which are unique for all the files (e.g. SNVs which are present in gen_vcf1, but absent in gen_vcf2, gen_merged, nas_vcf1, nas_vcf2, nas_vcf3, nas_merged)
+Define subsets of SNVs which are unique for all the files (e.g. SNVs which are present in gen_vcf1, but absent in gen_vcf2, gen_merged, nas_vcf1, nas_vcf2, nas_vcf3, nas_merged) and visualise stats.
 
 ```{r}
 # Extract INFO tables and SNV positions (i.e. SNV identifiers)

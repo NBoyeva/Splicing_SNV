@@ -11,6 +11,9 @@ library(edgeR)
 library(Rsamtools)
 library(ggplot2)
 library(ggseqlogo)
+library(VariantAnnotation)
+library(VennDiagram)
+library(grid)
 source("3_SNVs_in_splicing_sites_functions.R")
 #source("/media/user5/new/boyeva/r/2_splicing_sites_selection_functions.R")
 ```
@@ -30,9 +33,9 @@ readTxt <- function(path) {
 }
 ```
 
-EEJ gene related matrices contain information about exon-exon junctions which is inferred from RNAseq reads mapping gaps. Rows of every matrix of this kind are individual EEJs, and columns are samples. To create a set of EEJs, where splicing actually occurs in Kasumi-1 cells, we need to combine all the EEJ counts from all the samples:
+EEJ gene related matrices contain information about exon-exon junctions which is inferred from RNA-Seq reads mapping gaps. Rows of every matrix of this kind are individual EEJs, and columns are samples. To create a set of EEJs, where splicing actually occurs in Kasumi-1 cells, we need to combine all the EEJ counts from all the samples:
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 eej_dataset_dir <- file.path(fd116, "Dataset_of_EEJs")
 all_files <- list.files(eej_dataset_dir, full.names = TRUE)
 combined_df <- readTxt(all_files[[1]])
@@ -55,9 +58,9 @@ ncol(combined_df)
 colnames(combined_df)[1:10]
 ```
 
-To keep all potentially active EEJs , firstly, we selected low filtering threshold: an EEJ should have at leat 10 reads supporting it or CPM \>= -1 (0.5 per million reads) at least in one sample.
+To keep all potentially active EEJs, select low filtering threshold: an EEJ should have at least 10 reads supporting it or CPM \>= -1 (0.5 per million reads) at least in one sample.
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 filtered_df <- filter_eej_df(combined_df,
                               use_raw=TRUE,
                               use_cpm=TRUE,
@@ -72,9 +75,9 @@ write.table(filtered_df, file = file.path(fd116, "EEJ_raw10_cpm-1_s1.txt"), sep 
 str(filtered_df)
 ```
 
-We repeated filtration with higher CPN threshold:
+Repeat filtration with higher CPM threshold:
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 filtered_df <- filter_eej_df(combined_df,
                               use_raw=TRUE,
                               use_cpm=TRUE,
@@ -91,7 +94,7 @@ nrow(filtered_df)
 
 ... and with higher supporting samples number threshold:
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 filtered_df <- filter_eej_df(combined_df,
                               use_raw=TRUE,
                               use_cpm=TRUE,
@@ -136,6 +139,23 @@ x2 <- getSeq(x=fasta, res[[2]])
 ggseqlogo(data.frame(x2), seq_type = 'dna', method='prob')
 ```
 
+CPM threshold higher:
+
+```{r}
+input <- "EEJ_raw10_cpm0_s1.txt"
+
+res <- get_SS_from_EEJ(read_from_file=TRUE, file.path(fd, input))
+res$fiveSSs@seqnames <- gsub("chr", "", res$fiveSSs@seqnames)
+x1 <- getSeq(x=fasta, res[[1]])
+ggseqlogo(data.frame(x1), seq_type='dna', method='prob')
+```
+
+```{r}
+res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
+x2 <- getSeq(x=fasta, res[[2]])
+ggseqlogo(data.frame(x2), seq_type = 'dna', method='prob')
+```
+
 But if we take higher thresholds, dinucleotides are more conservative here.
 
 ```{r}
@@ -151,4 +171,136 @@ ggseqlogo(data.frame(x1), method='prob')
 res$threeSSs@seqnames <- gsub("chr", "", res$threeSSs@seqnames)
 x2 <- getSeq(x=fasta, res[[2]])
 ggseqlogo(data.frame(x2), seq_type = 'dna', method='prob')
+```
+
+# Intersection of Splice Sites from Different Sources
+
+Load EEJ data:
+
+```{r}
+eej <- readTxt(file.path(fd, "EEJ_raw10_cpm0_s3.txt"))
+eej$seqnames <- gsub("chr", "", eej$seqnames)
+ss_coords_eej <- get_SS_from_EEJ(read_from_file=FALSE, df=eej)
+```
+
+Load UCSC data (ucsc data):
+
+```{r}
+bed_path = file.path(fd, "ucsc.bed")
+ucsc <- import(con = bed_path, format = "BED")
+ucsc@seqnames <- gsub("chr", "", ucsc@seqnames)
+ucsc <- ucsc[nchar(as.character(ucsc@seqnames)) < 3, ]
+ucsc@seqnames <- droplevels(ucsc@seqnames)
+ucsc_df <- as.data.frame(ucsc)
+ucsc_df <- ucsc_df[!duplicated(ucsc_df[c("seqnames", "start", "end", "strand")]),]
+ss_coords_ucsc <- get_SS_from_ucsc(read_from_file = FALSE, df=ucsc_df)
+ss_coords_ucsc
+```
+
+```{r}
+ucsc_df$eej_id <- paste0("chr", as.character(ucsc_df$seqnames), ":", 
+                            as.character(ucsc_df$start - 1), "-", 
+                            as.character(ucsc_df$end + 1), "_str", 
+                            ucsc_df$strand)
+```
+
+```{r}
+eej_5ss <- paste0("chr", as.character(ss_coords_eej$fiveSSs@seqnames), ":", 
+                   as.character(start(ss_coords_eej$fiveSSs@ranges)), "-", 
+                   as.character(end(ss_coords_eej$fiveSSs@ranges)), 
+                   "_str", ss_coords_eej$fiveSSs@strand)
+
+eej_3ss <- paste0("chr", as.character(ss_coords_eej$threeSSs@seqnames), ":", 
+                   as.character(start(ss_coords_eej$threeSSs@ranges)), "-", 
+                   as.character(end(ss_coords_eej$threeSSs@ranges)), 
+                   "_str", ss_coords_eej$threeSSs@strand)
+
+ucsc_5ss <- paste0("chr", as.character(ss_coords_ucsc$fiveSSs@seqnames), ":", 
+                   as.character(start(ss_coords_ucsc$fiveSSs@ranges)), "-", 
+                   as.character(end(ss_coords_ucsc$fiveSSs@ranges)), 
+                   "_str", ss_coords_ucsc$fiveSSs@strand)
+
+ucsc_3ss <- paste0("chr", as.character(ss_coords_ucsc$threeSSs@seqnames), ":", 
+                   as.character(start(ss_coords_ucsc$threeSSs@ranges)), "-", 
+                   as.character(end(ss_coords_ucsc$threeSSs@ranges)), 
+                   "_str", ss_coords_ucsc$threeSSs@strand)
+```
+
+```{r}
+venn.plot <- venn.diagram(
+  x = list(
+    eej = eej_5ss,
+    ucsc = ucsc_5ss
+  ),
+  filename = NULL,  
+  fill = c("coral", "cornflowerblue"), 
+  alpha = 0.6,     
+  cat.cex = 1,   
+  cex = 1,
+  cat.pos = c(-22, 20),
+  category.names = c("RNA-Seq", "UCSC"),
+  main = "5' SSs Intersection",
+  main.cex = 1,
+  main.pos = c(0.5, 0.98),
+  main.fontfamily = "sans",
+  main.fontface = "bold",
+  cat.fontfamily = "sans",
+  fontfamily = "sans",
+)
+
+grid.newpage() 
+grid.draw(venn.plot)
+```
+
+```{r}
+venn.plot <- venn.diagram(
+  x = list(
+    eej = eej_3ss,
+    ucsc = ucsc_3ss
+  ),
+  filename = NULL,  
+  fill = c("coral", "cornflowerblue"), 
+  alpha = 0.6,     
+  cat.cex = 1,   
+  cex = 1,
+  cat.pos = c(-22, 20),
+  category.names = c("RNA-Seq", "UCSC"),
+  main = "3' SSs Intersection",
+  main.cex = 1,
+  main.pos = c(0.5, 0.98),
+  main.fontfamily = "sans",
+  main.fontface = "bold",
+  cat.fontfamily = "sans",
+  fontfamily = "sans",
+)
+
+grid.newpage() 
+grid.draw(venn.plot)
+```
+
+Here we can see which percent of SSs from RNA-Seq data and from UCSC annotation (overall, unique to each source and common) are in genes which are normally expressed in Kasumi-1 cell line.
+
+```{r}
+expressed_genes <- readTxt(file.path(fd, "RUNX1-RUNX1T1 project, list of expressed genes"))
+```
+
+```{r}
+ucsc_df$refseq_id <- sapply(strsplit(ucsc_df$name, "_"), function(x) paste(x[1], x[2], sep = "_"))
+
+unique_to_eej <- eej[eej$eej_id %in% setdiff(eej$eej_id, ucsc_df$eej_id),]
+unique_to_ucsc <- ucsc_df[ucsc_df$eej_id %in%setdiff(ucsc_df$eej_id, eej$eej_id),]
+common <- eej[eej$eej_id %in% intersect(eej$eej_id, ucsc_df$eej_id),]
+mean(unique_to_eej$gene_id %in% expressed_genes$gene_id)
+mean(unique_to_ucsc$refseq_id %in% expressed_genes$refseq_id)
+mean(common$gene_id %in% expressed_genes$gene_id)
+```
+
+```{r}
+mean(eej$gene_id %in% expressed_genes$gene_id)
+mean(ucsc_df$refseq_id %in% expressed_genes$refseq_id)
+```
+
+```{r}
+ucsc_unique <- ucsc_df[ucsc_df$eej_id %in%setdiff(ucsc_df$eej_id, eej$eej_id),]
+write.table(ucsc_unique, file = file.path(fd, "ucsc_unique.txt"), sep = '\t')
 ```
