@@ -1,3 +1,4 @@
+####### Get splice site positios from EEJ positions #######
 get_SS_from_EEJ <- function(read_from_file=TRUE, filepath=NULL, df=NULL){
   
   if (read_from_file) {
@@ -36,59 +37,18 @@ get_SS_from_EEJ <- function(read_from_file=TRUE, filepath=NULL, df=NULL){
   return(SSs)
 }
 
-get_SS_from_ucsc <- function(read_from_file=TRUE, filepath=NULL, df=NULL){
-  
-  if (read_from_file) {
-    ucsc <- import(con = filepath, format = "BED")
-  } else {
-    ucsc <- makeGRangesFromDataFrame(df=df,
-                                     keep.extra.columns=TRUE)
-  }
-  
-  # Converting of genomic coordinates of ucsc
-  # in genomic coordinates of splice sites.
-  fiveSSs <- ucsc
-  start(x=fiveSSs[strand(x=fiveSSs) == "+", ]) <-
-    start(x=fiveSSs[strand(x=fiveSSs) == "+", ]) - 3
-  end(x=fiveSSs[strand(x=fiveSSs) == "+", ]) <-
-    start(x=fiveSSs[strand(x=fiveSSs) == "+", ]) + 8
-  start(x=fiveSSs[strand(x=fiveSSs) == "-", ]) <-
-    end(x=fiveSSs[strand(x=fiveSSs) == "-", ]) - 5
-  end(x=fiveSSs[strand(x=fiveSSs) == "-", ]) <-
-    start(x=fiveSSs[strand(x=fiveSSs) == "-", ]) + 8
-  threeSSs <- ucsc
-  start(x=threeSSs[strand(x=threeSSs) == "+", ]) <-
-    end(x=threeSSs[strand(x=threeSSs) == "+", ]) - 19
-  end(x=threeSSs[strand(x=threeSSs) == "+", ]) <-
-    start(x=threeSSs[strand(x=threeSSs) == "+", ]) + 22
-  start(x=threeSSs[strand(x=threeSSs) == "-", ]) <-
-    start(x=threeSSs[strand(x=threeSSs) == "-", ]) - 3
-  end(x=threeSSs[strand(x=threeSSs) == "-", ]) <-
-    start(x=threeSSs[strand(x=threeSSs) == "-", ]) + 22
-  SSs <- list(fiveSSs=fiveSSs, threeSSs=threeSSs)
-  
-  return(SSs)
-}
 
-
+####### Helper function to find overlaps of SNVs and splice site (either 3' or 5') #######
 find_overlaps_GNC <- function(ss_granges, vcf_granges) {
   
-  # This function creates Nested Containment List  for
-  # GRanges object with SS data and uses it to find overlaps
-  # with GRanges-formatted data from VCF.
-  #
-  # Args:
-  # ss_granges : GRanges object
-  #   splicing sites data
-  # vcf_granges : GRanges object
-  #   SNP data
-  
-  #ss_git <- GNCList(ss_granges[!duplicated(ss_granges)]) # temporarily commented to fix for ucsc
   ss_git <- GNCList(ss_granges)
   ss_vcf_overlap <- findOverlaps(vcf_granges, ss_git)
+  
   return(ss_vcf_overlap)
 }
 
+
+####### Find overlaps of SNVs and all splice sites #######
 find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
   
   ss5_overlap <- find_overlaps_GNC(ss_coords$fiveSSs, vcf_granges)
@@ -139,6 +99,7 @@ find_overlaps_jointSS <- function(ss_coords, vcf_granges, ss_df) {
 }
 
 
+####### Add reference splice site sequences to a dataframe #######
 add_refseqs <- function(ref, df) {
 
   ss_gr <- GRanges(IRanges(start = df$ss_start, end = df$ss_end), 
@@ -150,6 +111,7 @@ add_refseqs <- function(ref, df) {
 }
 
 
+####### Add altered splice site sequences to a dataframe #######
 add_altseqs <- function(df) {
 
   # Add the altseq column

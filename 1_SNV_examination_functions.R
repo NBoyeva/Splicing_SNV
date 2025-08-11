@@ -1,17 +1,11 @@
-############# Comparison of QCmetrics across files ############
-
-
+####### Read VCF files into a list of dataframes #######
 create_full_info_table <- function(filepaths) {
+  
   info_tables <- list()
   
   for (i in seq_along(filepaths)) {
-    # Read the VCF file
     vcf <- readVcf(filepaths[i], "hg38")
-    
-    # Extract the INFO field
     info_table <- info(vcf)
-    
-    # Store the INFO table in the list
     info_tables[[i]] <- as.data.frame(info_table)
   }
   
@@ -19,15 +13,13 @@ create_full_info_table <- function(filepaths) {
 }
 
 
+####### Plot given parameter densities for all VCFs represented as infotables #######
 plot_density <- function(info_tables, 
                          param_name, 
                          labels, 
                          descriptions, 
                          x_log10 = FALSE, 
                          y_log10 = FALSE) {
-  
-  # Plots given parameter densities for all files for which info 
-  # tables are provided.
   
   data_list <- list()
   
@@ -75,13 +67,9 @@ plot_density <- function(info_tables,
 }
 
 
-########## Analysis of intersections ###############
-
+####### Apply VCF filtration and return filtration statistics (optionally) #######
+# Prior to this, VCF should be processed with FilterVariants from GATK.
 hardfilter_vcf <- function(unfiltered_vcf, stats=FALSE) {
-  
-  # This function applies VCF filtration and returns filtration statistics 
-  # (optionally). Prior to this, VCF should be processed with FilterVariants
-  # from GATK.
   
   if (stats) {
     print(paste0("Filtered by FS:  ", 
@@ -116,11 +104,8 @@ load_vcf <- function(path, hardfilter=TRUE, stats=FALSE) {
 }
 
 
-######### Comparison of unique and intersecting SNVs ###############
-
+####### Extract the INFO tables and SNV positions from VCF files #######
 extract_info_and_positions <- function(filepath) {
-  
-  # Extract the INFO tables and SNV positions from VCF files
   
   vcf <- readVcf(filepath, "hg38")
   info_table <- info(vcf)
@@ -131,13 +116,10 @@ extract_info_and_positions <- function(filepath) {
 }
 
 
-
+####### Identify unique and common SNVs based on positions #######
 identify_snv_sets_positions <- function(snv_positions, 
                                         file_labels) {
-  
-  # Identify unique and common SNVs based on positions
-  
-  # Identify unique SNVs for each file based on positions
+
   unique_snvs <- 
     lapply(seq_along(snv_positions), 
            function(i) {
@@ -149,7 +131,6 @@ identify_snv_sets_positions <- function(snv_positions,
              })
   
   # Identify common SNVs in genomic VCFs 
-  # Identify common SNVs in genomic VCFs
   gen_files <- c("gen1", "gen2", "gen_merged")
   gen_indices <- which(file_labels %in% gen_files)
   gen_common_positions <- Reduce(intersect, 
@@ -190,18 +171,15 @@ identify_snv_sets_positions <- function(snv_positions,
   ) %>% filter(!is.null(.))
   
   return(combined_positions)
-  
 }
 
 
-# Helper function to extract common metrics for "gen common", "nas common", and "all common"
+####### Helper function to extract common metrics for "gen common", "nas common", and "all common" #######
 extract_common_metric <- function(info_tables, param_name, snv_set) {
   positions <- snv_set$Position  # SNV positions from the common SNV set
-  
-  # Initialize an empty vector to store the parameter values for the common SNVs
+
   common_values <- rep(NA, length(positions))
   
-  # Iterate over each INFO table in the group (e.g., gen1, gen2, gen_merged for gen common)
   for (i in seq_along(info_tables)) {
     
     if (param_name %in% names(info_tables[[i]]$info_table)) {
@@ -230,15 +208,12 @@ extract_common_metric <- function(info_tables, param_name, snv_set) {
 
 
 
-# Function to extract parameter values for SNV sets using stored INFO tables
+####### Extract parameter values for SNV sets using stored infotables #######
 extract_metric_from_info_tables <- function(info_tables, 
                                             param_name, 
                                             snv_set) {
   
-  # Initialize an empty list to store the parameter values for unique SNVs
   param_values_list <- list()
-  
-  # Iterate over each file's INFO table to extract the relevant parameter for unique SNVs
   for (i in seq_along(info_tables)) {
     
     # Get the SNV positions for this file in the SNV set
@@ -278,12 +253,10 @@ extract_metric_from_info_tables <- function(info_tables,
   snv_set$Value[snv_set$File %in% paste0(labels, " unique")] <- unique_values
   
   # Extract and update metrics for the common SNV sets 
-  # (e.g., "gen common", "nas common", "all common")
   common_files <- c("gen common", "nas common", "all common")
   for (common_file in common_files) {
     common_indices <- which(snv_set$File == common_file)
     
-    # For common SNVs, use the first file in the group to extract values
     if (common_file == "gen common") {
       snv_set$Value[common_indices] <- extract_common_metric(info_tables[1:3], 
                                                              param_name, 
@@ -303,25 +276,21 @@ extract_metric_from_info_tables <- function(info_tables,
 }
 
 
-
-# Function to plot the SNV data with different parameter metrics
+####### Plot the SNV data with different parameter metrics #######
 plot_snv_density <- function(snv_set_with_metric, 
                              param_name, 
                              descriptions, 
                              x_log10 = FALSE, 
                              y_log10 = FALSE) {
   
-  # Adjust axis labels based on log10 options
   x_label <- if (x_log10) paste(param_name, "(log10 scale)") else param_name
   y_label <- if (y_log10) "Density (log10 scale)" else "Density"
   
-  # Create a column to adjust line thickness for common SNVs
   snv_set_with_metric$LineThickness <- ifelse(snv_set_with_metric$File %in% 
                                                 c("gen common", 
                                                   "nas common", 
                                                   "all common"), 1.5, 0.5)
   
-  # Create the density plot
   p <- ggplot(snv_set_with_metric, aes(x = Value, 
                                        color = File, 
                                        size = LineThickness)) +
@@ -333,7 +302,6 @@ plot_snv_density <- function(snv_set_with_metric,
     scale_size_identity() +
     theme(legend.title = element_blank())
   
-  # Apply log10 scale to x or y axis if requested
   if (x_log10) {
     p <- p + scale_x_log10()
   }

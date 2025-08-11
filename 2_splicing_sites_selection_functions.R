@@ -1,3 +1,4 @@
+#######  Calculate row sum (only columns which represent samples are considered) #######
 get_sum_vector <- function(df) {
   
   sum_vector <- rowSums(df[, !(colnames(df) %in% 
@@ -10,6 +11,7 @@ get_sum_vector <- function(df) {
   return(sum_vector)
 }
 
+####### Helper function #######
 filter_eej_cols <- function(df,
                             use_raw=FALSE, 
                             raw_threshold=10, 
@@ -31,7 +33,7 @@ filter_eej_cols <- function(df,
 }
 
 
-
+####### Filter EEJ dataframe based on EEJ raw counts and/or CPM #######
 filter_eej_df <- function(full_df,
                           use_raw=TRUE,
                           use_cpm=TRUE,
